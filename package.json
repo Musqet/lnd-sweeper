@@ -1,6 +1,6 @@
 {
   "name": "lnd-sweeper",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Recover on-chain funds from a dead LND node using only the 24 aezeed words. Single self-contained HTML file.",
