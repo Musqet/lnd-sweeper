@@ -1,0 +1,24 @@
+{
+  "recordedAt": "2026-09-10T10:20:00Z",
+  "note": "Verbatim HTTP bodies recorded with curl. Signet base URL https://mempool.space/signet/api (mempool.space backend). blockstream-* files are from https://blockstream.info/testnet/api (plain electrs Esplora) for shape comparison.",
+  "files": {
+    "signet-blocks-tip-height.txt": "GET /blocks/tip/height",
+    "signet-v1-fees-recommended.json": "GET /v1/fees/recommended (mempool.space only)",
+    "signet-fee-estimates.json": "GET /fee-estimates (HTTP 203 on mempool.space, deprecated; plain Esplora returns 200)",
+    "blockstream-testnet-fee-estimates.json": "GET /fee-estimates on plain Esplora",
+    "signet-address-stats-used.json": "GET /address/tb1qcvghydtuhcn8ehxxfl926ldcwhjegls5zvw9v2 (9 confirmed txs, 1 utxo)",
+    "signet-address-utxo-used.json": "GET /address/tb1qcvghydtuhcn8ehxxfl926ldcwhjegls5zvw9v2/utxo",
+    "signet-address-stats-unused.json": "GET /address/tb1qcd2fwxufkdwzqxa5hr40kc8ev7uq59gtzz6yah (never used)",
+    "signet-address-utxo-unused.json": "GET /address/tb1qcd2fwxufkdwzqxa5hr40kc8ev7uq59gtzz6yah/utxo",
+    "signet-address-txs-unused.json": "GET /address/tb1qcd2fwxufkdwzqxa5hr40kc8ev7uq59gtzz6yah/txs",
+    "signet-address-stats-with-mempool.json": "GET /address/tb1q2fwm9cxug27cq4uslaeepwcux6trj8pt266mwz (1 confirmed funding, spent in mempool)",
+    "signet-address-utxo-with-mempool.json": "GET /address/tb1q2fwm9cxug27cq4uslaeepwcux6trj8pt266mwz/utxo (empty: spent in mempool)",
+    "signet-address-txs-with-mempool.json": "GET /address/tb1q2fwm9cxug27cq4uslaeepwcux6trj8pt266mwz/txs (1 unconfirmed + 1 confirmed)",
+    "signet-address-txs-page1.json": "GET /address/tb1qr6lmcexy6285f3a04j2a75d39qvcdek739g8cz/txs (busy address; mempool.space returns 50 confirmed on the first page, plain Esplora returns 25)",
+    "signet-address-txs-chain-cursor.json": "GET /address/tb1qr6lmcexy6285f3a04j2a75d39qvcdek739g8cz/txs/chain/4afe17d4d37ebad043879ce8443484c5482b1306c9ee8279c23a79fd60976276 (25 txs)",
+    "error-responses.json": "Status, content type and verbatim body of the error responses we handle",
+    "signet-tx-hex.txt": "GET /tx/7005f70d3ac295fbf5dbaec8ae8f72f33564c543a1a7edd0f609468c82c84260/hex",
+    "signet-tx.json": "GET /tx/7005f70d3ac295fbf5dbaec8ae8f72f33564c543a1a7edd0f609468c82c84260",
+    "signet-tx-status.json": "GET /tx/7005f70d3ac295fbf5dbaec8ae8f72f33564c543a1a7edd0f609468c82c84260/status"
+  }
+}

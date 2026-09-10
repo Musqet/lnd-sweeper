@@ -1,0 +1,32 @@
+{
+  "POST /tx (body: deadbeef) on mempool.space": {
+    "status": 400,
+    "contentType": "text/plain",
+    "body": "sendrawtransaction RPC error: {\"code\":-22,\"message\":\"TX decode failed. Make sure the tx has at least one input.\"}"
+  },
+  "POST /tx (body: deadbeef) on blockstream.info plain esplora": {
+    "status": 400,
+    "contentType": "text/plain",
+    "body": "sendrawtransaction RPC error -22: TX decode failed. Make sure the tx has at least one input."
+  },
+  "GET /address/notanaddress": {
+    "status": 400,
+    "contentType": "text/plain",
+    "body": "Invalid Bitcoin address"
+  },
+  "GET /address/tb1pruektj90gg8nysa7yuk07w7ucwlywrf4p02lq3sz49f05xd00djscyt2fw/utxo": {
+    "status": 400,
+    "contentType": "text/plain",
+    "body": "Too many unspent transaction outputs (>500). Contact support to raise limits."
+  },
+  "GET /v1/fees/recommended on blockstream.info plain esplora": {
+    "status": 404,
+    "contentType": "text/plain",
+    "body": ""
+  },
+  "GET /tx/abab...ab (unknown txid)": {
+    "status": 404,
+    "contentType": "text/plain",
+    "body": "Transaction not found"
+  }
+}

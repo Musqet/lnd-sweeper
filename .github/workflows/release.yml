@@ -1,0 +1,138 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  NODE_ENV: production
+
+jobs:
+  release:
+    name: Build, hash, attest, draft
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write      # create the release and upload assets
+      id-token: write      # sign the provenance attestation (Sigstore)
+      attestations: write  # store it on the repository
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check tag matches package.json and the UI version constant
+        run: |
+          set -eu
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p 'require("./package.json").version')"
+          if [ "$tag" != "$pkg" ]; then
+            echo "tag v${tag} does not match package.json version ${pkg}" >&2
+            exit 1
+          fi
+          # Until the UI reads __APP_VERSION__ (defined from package.json in
+          # vite.config.ts) it may hardcode APP_VERSION; if so it must agree too.
+          if grep -qE 'APP_VERSION *= *"' src/ui/app.ts; then
+            ui="$(sed -nE 's/.*APP_VERSION *= *"([^"]+)".*/\1/p' src/ui/app.ts | head -n1)"
+            if [ "$ui" != "$pkg" ]; then
+              echo "src/ui/app.ts APP_VERSION ${ui} does not match package.json ${pkg}" >&2
+              exit 1
+            fi
+          fi
+          echo "version ${pkg} consistent"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile --prod=false
+
+      - name: Typecheck and unit tests
+        run: |
+          pnpm typecheck
+          pnpm test
+
+      - name: Verify reproducible build
+        run: scripts/verify-reproducible.sh
+
+      - name: Build release artefact and SHA256SUMS
+        run: scripts/build-release.sh
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/lnd-sweeper.html
+            dist/SHA256SUMS
+
+      - name: Write release notes
+        run: |
+          set -eu
+          tag="${GITHUB_REF_NAME}"
+          hash="$(cut -d' ' -f1 dist/SHA256SUMS)"
+          {
+            echo "## lnd-sweeper ${tag}"
+            echo
+            echo "One file: \`lnd-sweeper.html\`. Download it, verify it, then open it from disk in a browser (ideally offline)."
+            echo
+            echo "SHA-256:"
+            echo
+            echo '```'
+            echo "${hash}  lnd-sweeper.html"
+            echo '```'
+            echo
+            echo "Check the hash:"
+            echo
+            echo '```sh'
+            echo "sha256sum lnd-sweeper.html      # Linux"
+            echo "shasum -a 256 lnd-sweeper.html  # macOS"
+            echo "certutil -hashfile lnd-sweeper.html SHA256  # Windows"
+            echo '```'
+            echo
+            echo "Check that this exact file was built by GitHub Actions from this repository at this tag (needs the GitHub CLI):"
+            echo
+            echo '```sh'
+            echo "gh attestation verify lnd-sweeper.html --repo ${GITHUB_REPOSITORY}"
+            echo '```'
+            echo
+            echo "Or rebuild it yourself and compare: see README, section \"Reproducible build\"."
+            echo
+            echo "Built from commit \`${GITHUB_SHA}\` by GitHub Actions run ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
+            echo
+            echo "Maintainer signature over \`SHA256SUMS\` (\`SHA256SUMS.asc\` or \`SHA256SUMS.minisig\`): made offline by the maintainer before this release was published, with a key that is never on GitHub. See README, section \"Maintainer signature\", for how to check it."
+          } > release-notes.md
+          cat release-notes.md
+
+      # Created as a DRAFT on purpose. The workflow has no signing key and must
+      # never have one. A maintainer runs scripts/release-sign.sh, which verifies
+      # SHA256SUMS against a local rebuild, signs it offline, uploads the
+      # signature and prints the publish command. Nothing is public until then.
+      - name: Create GitHub release (draft)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --draft \
+            --verify-tag \
+            --title "lnd-sweeper ${GITHUB_REF_NAME}" \
+            --notes-file release-notes.md \
+            dist/lnd-sweeper.html dist/SHA256SUMS
+
+      - name: Summary
+        run: |
+          echo "Draft release ${GITHUB_REF_NAME} created. Next: a maintainer runs \`scripts/release-sign.sh ${GITHUB_REF_NAME}\` then publishes." >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat dist/SHA256SUMS >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

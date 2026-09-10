@@ -1,0 +1,96 @@
+import type { Network } from "../../types";
+import type { Ctx } from "../app";
+import { button, field, gloss, h, notice, uid } from "../dom";
+import { NETWORK_LABEL } from "../format";
+import { DEFAULT_SOURCE, isHttpUrl } from "../logic";
+
+const NETWORKS: Network[] = ["mainnet", "signet", "testnet", "regtest"];
+
+export function renderStart(ctx: Ctx): HTMLElement {
+  const { state } = ctx;
+  const groupName = uid("net");
+
+  const source = h("input", { type: "url", class: "mono", value: state.sourceUrl, spellcheck: "false", autocomplete: "off", inputmode: "url" }) as HTMLInputElement;
+  const sourceError = h("div", { class: "reason bad", role: "alert" });
+
+  const radios = NETWORKS.map((n) => {
+    const input = h("input", { type: "radio", name: groupName, value: n, checked: state.network === n }) as HTMLInputElement;
+    input.addEventListener("change", () => {
+      const previousDefault = DEFAULT_SOURCE[state.network];
+      state.network = n;
+      if (source.value.trim() === previousDefault || source.value.trim() === "") source.value = DEFAULT_SOURCE[n];
+    });
+    return h("label", {}, input, NETWORK_LABEL[n]);
+  });
+
+  const continueBtn = button("Continue to seed words", () => {
+    const url = source.value.trim();
+    if (!isHttpUrl(url)) {
+      sourceError.textContent = "Enter a full URL starting with https:// or http://, for example https://mempool.space/api";
+      source.classList.add("invalid");
+      source.focus();
+      return;
+    }
+    sourceError.textContent = "";
+    state.sourceUrl = url.replace(/\/+$/, "");
+    ctx.go("seed");
+  }, { primary: true });
+
+  const form = h("form", { class: "starter", onSubmit: (e: Event) => { e.preventDefault(); continueBtn.click(); } },
+    h("div", { class: "field" },
+      h("span", { class: "group-label" }, "Network"),
+      h("div", { class: "seg", role: "radiogroup", "aria-label": "Network" }, ...radios),
+      h("div", { class: "hint" }, "Almost everyone wants Mainnet."),
+    ),
+    field(
+      "Chain data source",
+      source,
+      h("span", {}, "Any mempool.space or ", gloss("Esplora", "the address-lookup API that mempool.space and many block explorers provide"), " API. A public server is fine for the quick scan; for lnd's full 2,500-address window a self-hosted Esplora or mempool is recommended. The server sees every address checked and your IP address; details below."),
+    ),
+    sourceError,
+    h("div", { class: "actions" }, continueBtn),
+  );
+
+  const cleared = state.justCleared
+    ? notice("ok", h("p", {}, h("strong", {}, "Cleared."), " The seed words, passphrase, derived keys, scan results and any signed transaction were wiped from this page's memory. Nothing was ever written to disk."))
+    : null;
+  state.justCleared = false;
+
+  return h(
+    "section",
+    {},
+    h("h1", {}, "Recover on-chain funds from a dead LND node"),
+    cleared,
+    h("p", { class: "lede" }, "Type the 24 seed words lnd gave you. This page finds what is left on that wallet and sends all of it, in one transaction, to an address you choose."),
+    notice("warn", h("p", {}, h("strong", {}, "Only for a node whose channels are all closed."), " If channels are still open, restore the node with lnd or use ", h("a", { href: "https://github.com/lightninglabs/chantools", rel: "noopener", target: "_blank" }, "chantools"), " instead: sweeping the wallet does not touch money inside channels.")),
+    form,
+
+    h("details", { class: "panel" },
+      h("summary", {}, "Before you begin: run a verified copy"),
+      h("div", { class: "body" },
+        h("ul", { class: "plain", style: "margin-top:0.75rem" },
+          h("li", {}, "Download this file from the release page and compare its ", gloss("SHA-256", "a fingerprint of the file; the release page shows the expected value and your operating system can compute yours"), " with the one published there. A tampered copy could send your funds elsewhere."),
+          h("li", {}, "Open the downloaded file from disk rather than from a website. It contains no external scripts, images or fonts, and a content security policy blocks any that were added."),
+          h("li", {}, "The only network requests it makes go to the chain data source you chose above. Nothing else leaves this page."),
+          h("li", {}, "Your seed words and keys are held in memory only while this tab is open and are wiped when you press start over."),
+        ),
+      ),
+    ),
+    h("details", { class: "panel" },
+      h("summary", {}, "Privacy: what the data source learns"),
+      h("div", { class: "body" },
+        h("p", { class: "small", style: "margin-top:0.75rem" }, "To find your coins the page asks the data source about every address the wallet could have used: a few hundred for the quick scan, up to about 17,500 for lnd's full window. That server therefore learns which addresses belong together, their balances, your IP address, and the transaction you broadcast. Public servers also rate-limit heavy use, which is why the full window is best run against your own mempool or Esplora instance. If privacy matters to you, do the same, or open this page in a browser that routes through Tor."),
+      ),
+    ),
+    h("details", { class: "panel" },
+      h("summary", {}, "What this page does and does not do"),
+      h("div", { class: "body" },
+        h("ul", { class: "plain", style: "margin-top:0.75rem" },
+          h("li", {}, "It reproduces lnd's wallet recovery: it deciphers the aezeed seed, derives the same addresses lnd would, and checks them in order, stopping after 100 unused ones in a row on each path (or 2,500 if you scan deeper, lnd's own recovery window)."),
+          h("li", {}, "It builds and signs one transaction in your browser and hands it to the data source to broadcast. You can also broadcast the signed transaction yourself."),
+          h("li", {}, "It does not recover channel funds, does not read channel backups, and never sends your seed anywhere."),
+        ),
+      ),
+    ),
+  );
+}

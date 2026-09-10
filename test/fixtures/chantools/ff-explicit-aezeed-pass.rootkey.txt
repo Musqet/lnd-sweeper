@@ -1,0 +1,1 @@
+Your BIP32 HD root key is: xprv9s21ZrQH143K4QPkuYJSfBgCeAp1QAfdjrncnwaxixCaDVHtRXN54iV7zfpHTRWGgGCVgun35Jgq2BwoAboDrvyMU1YEmd4LPawcbJiHJ2G

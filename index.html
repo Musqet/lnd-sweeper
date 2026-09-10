@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src data:; font-src 'none'; connect-src https: http:; base-uri 'none'; form-action 'none'; object-src 'none'"
+    />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="Recover on-chain funds from a dead LND node using only the 24 aezeed seed words. Single file, runs in your browser." />
+    <link rel="icon" href="data:," />
+    <title>lnd-sweeper</title>
+  </head>
+  <body>
+    <noscript><p style="font-family: system-ui; padding: 2rem">lnd-sweeper needs JavaScript to derive keys and sign in your browser. Nothing runs on a server.</p></noscript>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

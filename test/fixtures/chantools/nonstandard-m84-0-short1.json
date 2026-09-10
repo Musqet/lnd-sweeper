@@ -1,0 +1,164 @@
+{
+  "generator": "chantools v0.14.2 derivekey + genimportscript --format bitcoin-descriptors --recoverywindow 2",
+  "note": "Seeds whose m/purpose' or m/purpose'/coin' private key has leading zero bytes, where btcd hdkeychain.DeriveNonStandard (used by lnd/btcwallet) diverges from BIP32.",
+  "entropy": "4c32192eb177b9831eb398fdc178d2cf",
+  "rootXprv": "xprv9s21ZrQH143K3vh5CM249a6xBeFEewy6jwfFr9af6g9EDHcZ6is3qucrGbKEhW82bpQgQZB6ndtk5K67iyfXm1qpYM1tHWd3KwMFxp7EYdJ",
+  "shortKeys": [
+    {
+      "path": "m/84'/0'",
+      "leadingZeroBytes": 1
+    }
+  ],
+  "cases": [
+    {
+      "network": "mainnet",
+      "coin": 0,
+      "purpose": 49,
+      "change": 0,
+      "index": 0,
+      "path": "m/49'/0'/0'/0/0",
+      "pubkey": "0294cfd543aadb64c105cd2c4e68b9739f7bb65f9424864d3503e5f7e0f265c07a",
+      "wif": "L3UrG2qR16vWEMjsDg3Z9QDbfSqq7cNjLJCvfdx3a6L8zzgxiYRC",
+      "p2wkh": "bc1qyjw0pcttu96z7qhg2zwsrfv80t9pym2qwxtjsl",
+      "p2tr": "bc1pv98nju0aveepnv7f0jvecdkfc0e9eer7hx5k97gska2knpslr5ls782tjg",
+      "np2wkh": "3HPpDaQ7XRyBq79TyKkfypzS4Fza6jFAZn"
+    },
+    {
+      "network": "mainnet",
+      "coin": 0,
+      "purpose": 49,
+      "change": 1,
+      "index": 1,
+      "path": "m/49'/0'/0'/1/1",
+      "pubkey": "020340f147f2b87cdbbe230736b277f455de50d4492061b3a0d62ed9dce9d59fe7",
+      "wif": "L4Py2u6MwtqPxihZjYazPrkEQVFSTQAuXQXT4bHLmCWhUsddKtrd",
+      "p2wkh": "bc1qvgpjgppsx244t07sn8na507wdcm3zu5c7zg5pf",
+      "p2tr": "bc1p8n86hd5v0tue7cyeugs6xzyqj8k9cgkeg3mjtr8vrldwxeeklahqva6sxz",
+      "np2wkh": "3QUL83QU98EdNeyXyivuaXK6ZuHpKuD1pR"
+    },
+    {
+      "network": "mainnet",
+      "coin": 0,
+      "purpose": 49,
+      "change": 0,
+      "index": 2499,
+      "path": "m/49'/0'/0'/0/2499",
+      "pubkey": "036d7779ca1918815fa75fbdd8314a92257b1f365f62bf6fddd2c4e153d414ea4d",
+      "wif": "KyLvrvsaYAWRGaSWjvgrVHS2XLzrDFmHxkH27JM8LuyVVu1Pwap9",
+      "p2wkh": "bc1qrr0y35kaam3l7tpugl04mu3acetteg2khncg70",
+      "p2tr": "bc1pp2sasafacds5eyyztzla0f0nza567q4ttf48kt3sevallafeqffq7rdqeq"
+    },
+    {
+      "network": "mainnet",
+      "coin": 0,
+      "purpose": 49,
+      "change": 1,
+      "index": 2147483647,
+      "path": "m/49'/0'/0'/1/2147483647",
+      "pubkey": "03276ebdbce67544d90f9854d1f65853b461fde924d4b2c4ab96be475e6b97ee43",
+      "wif": "L5HfKCrK9rAXsC5mS2LSE2bKtN6yUGvDhkkCGzD3u6uinpmCCQGD",
+      "p2wkh": "bc1qkwdm8ah9867rtwalgh7syl9h97ee39vep48fje",
+      "p2tr": "bc1p4kwn8rkce0rum5n508n7v3ejnhlggt45gnkk58jqhwmn5u5cahcq0eh8uh"
+    },
+    {
+      "network": "mainnet",
+      "coin": 0,
+      "purpose": 84,
+      "change": 0,
+      "index": 0,
+      "path": "m/84'/0'/0'/0/0",
+      "pubkey": "0322475a73ef1018dcf1b57d5e814461fd4f60389112526530acef643de521fddc",
+      "wif": "L4Ze7peTscFbDmuXepoqEji2nGz8jj8AfSwwqHZ9aHhW8ciRW5vW",
+      "p2wkh": "bc1q9xg0knut25k637fp5p3tv6sy83zhjr99axtaqa",
+      "p2tr": "bc1phvckc5ymhkcfv8kcquvdpmg6fzga4zmtzrg0ukpmkzvhehack7ls6k24m8",
+      "np2wkh": "3Bo77jN4JWTiDzE2oejDX8ZMTtuDsJfgiA"
+    },
+    {
+      "network": "mainnet",
+      "coin": 0,
+      "purpose": 84,
+      "change": 1,
+      "index": 1,
+      "path": "m/84'/0'/0'/1/1",
+      "pubkey": "02b941a00d8ba58e1aaa21270891246bd2d381a0171464a0fe418924af37a5752a",
+      "wif": "KyRUnJNuaYbAS9QpU6z3Sy1dkgBf3f6dhYhV2cxrMd7eMK8gnYtp",
+      "p2wkh": "bc1qauv4c02rnhmyvysjhv9xrrza9vnq7gd25g28tc",
+      "p2tr": "bc1p3qwejvcmf5are4my9uzju7r5tpcekqrk9p4gjfls3vqc2jcdzexsnc7wnp",
+      "np2wkh": "3Q9DYyraxTkGFV2YCn6SRXxmc37q2nQhdw"
+    },
+    {
+      "network": "mainnet",
+      "coin": 0,
+      "purpose": 84,
+      "change": 0,
+      "index": 2499,
+      "path": "m/84'/0'/0'/0/2499",
+      "pubkey": "03acf654d14e81d7e19cc0b6501bb1f45e27c2cef508e8f452a9103af503a85bcd",
+      "wif": "L4RCJSTkhAan8RyrffcYJxcUhb3eH8tEMtn4sD19nfJHMX7QLrCK",
+      "p2wkh": "bc1qmq5svngmrmuh278hd9zst6j5htx3rgtn5ajcgg",
+      "p2tr": "bc1pzh4pzqu9rk6039nfnx4pgyx9cw82yqfv8smar2eua0vs5mmth3eqttptlj"
+    },
+    {
+      "network": "mainnet",
+      "coin": 0,
+      "purpose": 84,
+      "change": 1,
+      "index": 2147483647,
+      "path": "m/84'/0'/0'/1/2147483647",
+      "pubkey": "020594ec48857ef19cdc85f86ff1bd9e2c74e67cd801508d4307cbb69554c488bd",
+      "wif": "L4fqxxzuZLRstFfCkuGTTBcjWQ5RCgsYc7qoqZeckYwsGBqJHC3q",
+      "p2wkh": "bc1qcg98q6g807he5g9s0gww4zf77yxj852uzfaz9s",
+      "p2tr": "bc1p7ae6uch45a9wzqf08jfqxghfxjm5l08m09k6xaqx5tqqvt3u8thqw3z2wa"
+    },
+    {
+      "network": "mainnet",
+      "coin": 0,
+      "purpose": 86,
+      "change": 0,
+      "index": 0,
+      "path": "m/86'/0'/0'/0/0",
+      "pubkey": "03bfd7913f9a2cfdb44a9df52f8368c6d3d7da3c106383aabda7a8d3f4fe751052",
+      "wif": "KxR3eBcWzrKr5Z7dXa7KsdggthnUY5Ze6XFvGWCKvgFQcTHzCaoY",
+      "p2wkh": "bc1quw3t5ju3zmrpk77pgdjweh05lu23dcn8vfyss2",
+      "p2tr": "bc1pwp5gmqf60amrswxgaq5vcmjnffnzvcv0v7r96x8qwkm6n4rstjlqzx6uhw",
+      "np2wkh": "36upjY2MLRaecn2AKuA3i4iaAiSEWf3ETq"
+    },
+    {
+      "network": "mainnet",
+      "coin": 0,
+      "purpose": 86,
+      "change": 1,
+      "index": 1,
+      "path": "m/86'/0'/0'/1/1",
+      "pubkey": "034aca7dafd5661f97c8d4bb37ec397bb91fa443327c601f0c2b447ca9efdae354",
+      "wif": "L1UtGyNNz5Ljg2YckoVjDYyPMMiNWix7YRse9cWMRCQdpwoSZe4X",
+      "p2wkh": "bc1qxvmy6arrawjnqqdccrvch5nlndun6xrye3tmch",
+      "p2tr": "bc1p9glefhqttluf7sjs7tq668w46cqg4crtm4kvq3670qadgrl648xs308rz3",
+      "np2wkh": "3FmRQTh9Qz23kftpAcUStQKAeZ5pCNJhvp"
+    },
+    {
+      "network": "mainnet",
+      "coin": 0,
+      "purpose": 86,
+      "change": 0,
+      "index": 2499,
+      "path": "m/86'/0'/0'/0/2499",
+      "pubkey": "025af421245343c4e285fd26aeaff443c568c1036a8ac147629fcdda4f41c39481",
+      "wif": "Ky2C44Yypn3oZNobJWqh9Dcr91jsmZcUAV6g6ZbTVgMeLuPRgCtT",
+      "p2wkh": "bc1q7gr304yug75xu3gsm5l65sxzd0vehr8ysjznx8",
+      "p2tr": "bc1pcqshxgs0f9kn80px6702a5lykqt6ys5p00tvh5cga8cd66xxlpcqmkqaph"
+    },
+    {
+      "network": "mainnet",
+      "coin": 0,
+      "purpose": 86,
+      "change": 1,
+      "index": 2147483647,
+      "path": "m/86'/0'/0'/1/2147483647",
+      "pubkey": "03ef0709cc6760287a19958184c0e3de5b6245198966a0af1e22a0f0ef409f1d67",
+      "wif": "Kx6rCA2EAJNUGiPRZVsQi4rB82oeqpnjALFM6WLKz6C3G5n1xjEn",
+      "p2wkh": "bc1qpglawhwtra8p57v23etunk7n055wq63aqnweqc",
+      "p2tr": "bc1ph94rkdvd9xnyj3jwzcrp85splq07lhregjawh7sjah2ar9qhc50qxjxysn"
+    }
+  ]
+}
