@@ -5,7 +5,7 @@
 #
 # Usage: scripts/verify-upstream-binaries.sh <outdir> [arch]
 #   arch: x86_64 (default) or aarch64
-# On success <outdir> contains bitcoind, bitcoin-cli, lnd and lncli.
+# On success <outdir> contains bitcoind, bitcoin-cli, lnd, lncli and chantools.
 #
 # Trust anchors, all pinned here and updated together:
 #   - the release versions and tarball SHA-256s,
@@ -35,11 +35,21 @@ LND_COMMIT="572b561bf05f03dfe6135110970c4d858c3482dc"
 # Signers of this release (one manifest-<name>-<ver>.sig each on the release page).
 LND_SIGNERS="boris georgetsagk gijswijs hieblmi suheb ViktorT-11 ziggie1984"
 LND_MIN_SIGS=2
+
+# chantools is the e2e differential oracle only: it is compared against our own
+# derivation and is never part of the released HTML. Its releases carry one
+# manifest signed by Oliver Gugger (guggero), whose key already ships in the
+# pinned lnd commit above, so this adds no new trust anchor.
+CHANTOOLS_VERSION="v0.14.2"
+# https://github.com/lightninglabs/chantools/releases/download/v0.14.2/manifest-v0.14.2.txt
+CHANTOOLS_SHA256_amd64="87a0e65839afb70e3859a4b3a4555da94488eed12ed9c6c516d7a72724379bcf"
+CHANTOOLS_SHA256_arm64="4e4ffbd1cde62930ca7fffe30541c727fc809e40f24c1d47bcd9254aebc7643c"
+CHANTOOLS_KEY_FPR="F4FC70F07310028424EFC20A8E4256593F177720"
 # ----------------------------------------------------------------------------
 
 case "$ARCH" in
-  x86_64)  LND_ARCH=amd64; BITCOIN_SHA256="$BITCOIN_SHA256_x86_64"; LND_SHA256="$LND_SHA256_amd64" ;;
-  aarch64) LND_ARCH=arm64; BITCOIN_SHA256="$BITCOIN_SHA256_aarch64"; LND_SHA256="$LND_SHA256_arm64" ;;
+  x86_64)  LND_ARCH=amd64; BITCOIN_SHA256="$BITCOIN_SHA256_x86_64"; LND_SHA256="$LND_SHA256_amd64"; CHANTOOLS_SHA256="$CHANTOOLS_SHA256_amd64" ;;
+  aarch64) LND_ARCH=arm64; BITCOIN_SHA256="$BITCOIN_SHA256_aarch64"; LND_SHA256="$LND_SHA256_arm64"; CHANTOOLS_SHA256="$CHANTOOLS_SHA256_arm64" ;;
   *) echo "unsupported arch: $ARCH" >&2; exit 2 ;;
 esac
 
@@ -115,5 +125,35 @@ tar -xzf "$L/$TARBALL" -C "$L"
 cp "$L/lnd-linux-${LND_ARCH}-${LND_VERSION}/lnd" "$L/lnd-linux-${LND_ARCH}-${LND_VERSION}/lncli" "$OUT/"
 echo "   OK"
 
-chmod 0755 "$OUT"/bitcoind "$OUT"/bitcoin-cli "$OUT"/lnd "$OUT"/lncli
+# ---- chantools (e2e differential oracle only; never shipped) ----------------
+echo "== chantools ${CHANTOOLS_VERSION} (linux-${LND_ARCH})"
+C="$WORK/chantools"; mkdir -p "$C"
+BASE="https://github.com/lightninglabs/chantools/releases/download/${CHANTOOLS_VERSION}"
+TARBALL="chantools-linux-${LND_ARCH}-${CHANTOOLS_VERSION}.tar.gz"
+MANIFEST="manifest-${CHANTOOLS_VERSION}.txt"
+fetch "$BASE/$MANIFEST" "$C/$MANIFEST"
+fetch "$BASE/manifest-${CHANTOOLS_VERSION}.sig" "$C/manifest.sig"
+fetch "$BASE/$TARBALL" "$C/$TARBALL"
+
+# guggero's key from the same pinned lnd commit already imported above. Confirm the
+# key file is really the pinned fingerprint before trusting it, then import.
+fetch "https://raw.githubusercontent.com/lightningnetwork/lnd/${LND_COMMIT}/scripts/keys/guggero.asc" "$C/guggero.asc"
+gpg --show-keys --with-colons "$C/guggero.asc" 2>/dev/null | awk -F: '/^fpr:/{print $10}' | grep -qx "$CHANTOOLS_KEY_FPR" \
+  || { echo "FAIL: guggero.asc fingerprint does not match the pinned $CHANTOOLS_KEY_FPR" >&2; exit 1; }
+gpg --batch --quiet --import "$C/guggero.asc" 2>/dev/null || true
+
+gpg --batch --status-fd 1 --verify "$C/manifest.sig" "$C/$MANIFEST" > "$C/gpg.status" 2>"$C/gpg.err" || true
+grep -q '^\[GNUPG:\] GOODSIG ' "$C/gpg.status" || { cat "$C/gpg.err" >&2; echo "FAIL: chantools manifest signature is not good" >&2; exit 1; }
+# The good signature must be from the pinned key, not merely any key in the ring.
+grep -q "^\[GNUPG:\] VALIDSIG ${CHANTOOLS_KEY_FPR} " "$C/gpg.status" \
+  || grep -q "^\[GNUPG:\] VALIDSIG .* ${CHANTOOLS_KEY_FPR}\$" "$C/gpg.status" \
+  || { echo "FAIL: chantools manifest not signed by the pinned guggero key" >&2; exit 1; }
+echo "   good signature: guggero ($CHANTOOLS_KEY_FPR)"
+(cd "$C" && grep " $TARBALL\$" "$MANIFEST" | $SHA -c - >/dev/null) || { echo "FAIL: $TARBALL does not match signed manifest" >&2; exit 1; }
+check_pinned "$C/$TARBALL" "$CHANTOOLS_SHA256"
+tar -xzf "$C/$TARBALL" -C "$C"
+cp "$C/chantools-linux-${LND_ARCH}-${CHANTOOLS_VERSION}/chantools" "$OUT/"
+echo "   OK"
+
+chmod 0755 "$OUT"/bitcoind "$OUT"/bitcoin-cli "$OUT"/lnd "$OUT"/lncli "$OUT"/chantools
 echo "Verified binaries in $OUT"

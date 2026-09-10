@@ -40,13 +40,14 @@ jobs:
       # It checks the maintainers' GPG signatures on SHA256SUMS / the lnd manifest
       # (>= 3 Core builders, >= 2 lnd maintainers), then the tarballs against both
       # the signed list and our own pinned hash. Update all pins together.
-      - name: Download and verify bitcoind and lnd (GPG + SHA-256)
+      - name: Download and verify bitcoind, lnd and chantools (GPG + SHA-256)
         run: |
           set -eu
           scripts/verify-upstream-binaries.sh "$RUNNER_TEMP/bin" x86_64
-          sudo install -m 0755 "$RUNNER_TEMP"/bin/bitcoind "$RUNNER_TEMP"/bin/bitcoin-cli "$RUNNER_TEMP"/bin/lnd "$RUNNER_TEMP"/bin/lncli /usr/local/bin/
+          sudo install -m 0755 "$RUNNER_TEMP"/bin/bitcoind "$RUNNER_TEMP"/bin/bitcoin-cli "$RUNNER_TEMP"/bin/lnd "$RUNNER_TEMP"/bin/lncli "$RUNNER_TEMP"/bin/chantools /usr/local/bin/
           bitcoind --version | head -n1
           lnd --version
+          chantools --version
 
       - name: Build
         run: pnpm build
@@ -57,6 +58,7 @@ jobs:
           BITCOIN_CLI_BIN: /usr/local/bin/bitcoin-cli
           LND_BIN: /usr/local/bin/lnd
           LNCLI_BIN: /usr/local/bin/lncli
+          CHANTOOLS_BIN: /usr/local/bin/chantools
         run: pnpm test:e2e
 
       - name: Upload regtest logs on failure
