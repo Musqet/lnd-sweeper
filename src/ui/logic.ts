@@ -1,6 +1,7 @@
 /**
  * Pure UI logic, kept free of DOM so it can be unit tested.
  */
+import { publicServerUrls } from "../chain";
 import type { Network } from "../types";
 
 export const WORD_COUNT = 24;
@@ -119,6 +120,28 @@ export const DEFAULT_SOURCE: Record<Network, string> = {
   signet: "https://mempool.space/signet/api",
   regtest: "http://127.0.0.1:3000",
 };
+
+/** Whether this network has a trusted public server set to spread across. */
+export function hasTrustedServers(network: Network): boolean {
+  return publicServerUrls(network).length > 0;
+}
+
+/**
+ * The server URLs a scan should query: the trusted public set (rotated across)
+ * when chosen and available, otherwise just the custom URL.
+ */
+export function chainSources(network: Network, useTrusted: boolean, customUrl: string): string[] {
+  if (useTrusted) {
+    const trusted = publicServerUrls(network);
+    if (trusted.length > 0) return trusted;
+  }
+  return [customUrl.replace(/\/+$/, "")];
+}
+
+/** The URL to build explorer links from: the first trusted server, or the custom URL. */
+export function explorerSource(network: Network, useTrusted: boolean, customUrl: string): string {
+  return chainSources(network, useTrusted, customUrl)[0]!;
+}
 
 /** Explorer web root for a chain API URL: strip a trailing /api, keep the network path. */
 export function explorerRoot(apiBase: string): string {

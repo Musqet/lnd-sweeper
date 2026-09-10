@@ -17,6 +17,13 @@ export const STEPS: { id: StepId; label: string }[] = [
 export interface AppState {
   step: StepId;
   network: Network;
+  /**
+   * When true, the scan spreads across the trusted public servers for the
+   * network (failover). When false, only `sourceUrl` is used. Forced false on
+   * regtest, which has no public servers.
+   */
+  useTrustedServers: boolean;
+  /** The custom server URL (used when useTrustedServers is false) and the explorer-link base. */
   sourceUrl: string;
   words: string[];
   passphrase: string;
@@ -48,6 +55,7 @@ export function freshState(): AppState {
   return {
     step: "start",
     network: "mainnet",
+    useTrustedServers: true,
     sourceUrl: "https://mempool.space/api",
     words: Array.from({ length: 24 }, () => ""),
     passphrase: "",

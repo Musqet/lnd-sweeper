@@ -1,17 +1,57 @@
 import type { Network } from "../../types";
+import { PUBLIC_SERVERS } from "../../chain";
 import type { Ctx } from "../app";
 import { button, field, gloss, h, notice, uid } from "../dom";
 import { NETWORK_LABEL } from "../format";
-import { DEFAULT_SOURCE, isHttpUrl } from "../logic";
+import { DEFAULT_SOURCE, explorerSource, hasTrustedServers, isHttpUrl } from "../logic";
 
 const NETWORKS: Network[] = ["mainnet", "signet", "testnet", "regtest"];
 
 export function renderStart(ctx: Ctx): HTMLElement {
   const { state } = ctx;
   const groupName = uid("net");
+  const srcName = uid("src");
 
   const source = h("input", { type: "url", class: "mono", value: state.sourceUrl, spellcheck: "false", autocomplete: "off", inputmode: "url" }) as HTMLInputElement;
   const sourceError = h("div", { class: "reason bad", role: "alert" });
+
+  // Names the trusted servers for the chosen network, e.g. "mempool.space, blockstream.info and 2 more".
+  const trustedNames = h("span", {});
+  function refreshTrustedNames(): void {
+    const list = PUBLIC_SERVERS[state.network];
+    const names = list.map((s) => s.name);
+    const shown = names.slice(0, 3).join(", ");
+    trustedNames.textContent = names.length > 3 ? `${shown} and ${names.length - 3} more` : names.join(", ");
+  }
+
+  const customWrap = h("div", { class: "field", style: "margin-top:0.75rem" },
+    field(
+      "Your Esplora or mempool URL",
+      source,
+      h("span", {}, "Any mempool.space or ", gloss("Esplora", "the address-lookup API that mempool.space and many block explorers provide"), " API, including your own node's. Only this server is contacted. The browser-reachable equivalent of connecting your own Electrum server is to point this at your own mempool or Esplora instance."),
+    ),
+    sourceError,
+  );
+
+  const trustedInput = h("input", { type: "radio", name: srcName, value: "trusted", checked: state.useTrustedServers }) as HTMLInputElement;
+  const ownInput = h("input", { type: "radio", name: srcName, value: "own", checked: !state.useTrustedServers }) as HTMLInputElement;
+
+  function applyMode(): void {
+    trustedInput.checked = state.useTrustedServers;
+    ownInput.checked = !state.useTrustedServers;
+    customWrap.hidden = state.useTrustedServers;
+  }
+
+  trustedInput.addEventListener("change", () => { state.useTrustedServers = true; applyMode(); });
+  ownInput.addEventListener("change", () => { state.useTrustedServers = false; applyMode(); });
+
+  const trustedToggle = h("div", { class: "field", hidden: !hasTrustedServers(state.network) },
+    h("span", { class: "group-label" }, "Chain data source"),
+    h("div", { class: "choices", role: "radiogroup", "aria-label": "Chain data source" },
+      h("label", { class: "stacked" }, h("span", {}, trustedInput, " Trusted public servers ", h("span", { class: "hint inline" }, "(recommended)")), h("span", { class: "hint" }, h("span", {}, "Spreads the scan across ", trustedNames, ", moving on the moment one rate-limits, so recovery does not stall. Failover, not round-robin: one server sees your addresses unless it limits you."))),
+      h("label", { class: "stacked" }, h("span", {}, ownInput, " Your own server"), h("span", { class: "hint" }, "Use one server you choose, and only that one. Best for privacy and for lnd's full 2,500-address window.")),
+    ),
+  );
 
   const radios = NETWORKS.map((n) => {
     const input = h("input", { type: "radio", name: groupName, value: n, checked: state.network === n }) as HTMLInputElement;
@@ -19,22 +59,35 @@ export function renderStart(ctx: Ctx): HTMLElement {
       const previousDefault = DEFAULT_SOURCE[state.network];
       state.network = n;
       if (source.value.trim() === previousDefault || source.value.trim() === "") source.value = DEFAULT_SOURCE[n];
+      // regtest has no public servers: force the custom URL.
+      if (!hasTrustedServers(n)) state.useTrustedServers = false;
+      trustedToggle.hidden = !hasTrustedServers(n);
+      refreshTrustedNames();
+      applyMode();
     });
     return h("label", {}, input, NETWORK_LABEL[n]);
   });
 
   const continueBtn = button("Continue to seed words", () => {
-    const url = source.value.trim();
-    if (!isHttpUrl(url)) {
-      sourceError.textContent = "Enter a full URL starting with https:// or http://, for example https://mempool.space/api";
-      source.classList.add("invalid");
-      source.focus();
-      return;
+    if (!state.useTrustedServers) {
+      const url = source.value.trim();
+      if (!isHttpUrl(url)) {
+        sourceError.textContent = "Enter a full URL starting with https:// or http://, for example https://mempool.space/api";
+        source.classList.add("invalid");
+        source.focus();
+        return;
+      }
+      sourceError.textContent = "";
+      state.sourceUrl = url.replace(/\/+$/, "");
+    } else {
+      // Explorer links use the first trusted server.
+      state.sourceUrl = explorerSource(state.network, true, state.sourceUrl);
     }
-    sourceError.textContent = "";
-    state.sourceUrl = url.replace(/\/+$/, "");
     ctx.go("seed");
   }, { primary: true });
+
+  refreshTrustedNames();
+  applyMode();
 
   const form = h("form", { class: "starter", onSubmit: (e: Event) => { e.preventDefault(); continueBtn.click(); } },
     h("div", { class: "field" },
@@ -42,12 +95,8 @@ export function renderStart(ctx: Ctx): HTMLElement {
       h("div", { class: "seg", role: "radiogroup", "aria-label": "Network" }, ...radios),
       h("div", { class: "hint" }, "Almost everyone wants Mainnet."),
     ),
-    field(
-      "Chain data source",
-      source,
-      h("span", {}, "Any mempool.space or ", gloss("Esplora", "the address-lookup API that mempool.space and many block explorers provide"), " API. A public server is fine for the quick scan; for lnd's full 2,500-address window a self-hosted Esplora or mempool is recommended. The server sees every address checked and your IP address; details below."),
-    ),
-    sourceError,
+    trustedToggle,
+    customWrap,
     h("div", { class: "actions" }, continueBtn),
   );
 
@@ -79,7 +128,8 @@ export function renderStart(ctx: Ctx): HTMLElement {
     h("details", { class: "panel" },
       h("summary", {}, "Privacy: what the data source learns"),
       h("div", { class: "body" },
-        h("p", { class: "small", style: "margin-top:0.75rem" }, "To find your coins the page asks the data source about every address the wallet could have used: a few hundred for the quick scan, up to about 17,500 for lnd's full window. That server therefore learns which addresses belong together, their balances, your IP address, and the transaction you broadcast. Public servers also rate-limit heavy use, which is why the full window is best run against your own mempool or Esplora instance. If privacy matters to you, do the same, or open this page in a browser that routes through Tor."),
+        h("p", { class: "small", style: "margin-top:0.75rem" }, "To find your coins the page asks the data source about every address the wallet could have used: a few hundred for the quick scan, up to about 17,500 for lnd's full window. That server therefore learns which addresses belong together, their balances, your IP address, and the transaction you broadcast. Public servers also rate-limit heavy use, which is why the trusted-servers option spreads a scan across several of them, moving on only when one asks us to slow down, so a big scan still finishes."),
+        h("p", { class: "small" }, "Trade-off: with the trusted servers, in the usual case one server sees your addresses (the tool only spreads to the others when the first rate-limits), but any server it does fall back to sees a slice too. With your own server, one server you control sees everything and nothing leaks elsewhere. For the strongest privacy, run your own mempool or Esplora instance, or open this page in a browser that routes through Tor."),
       ),
     ),
     h("details", { class: "panel" },

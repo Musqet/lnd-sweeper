@@ -18,6 +18,17 @@ export {
 export type { EsploraClientOptions, RawTx, ClientStatus } from "./esplora";
 
 export {
+  RotatingChainClient,
+  DEFAULT_ROTATE_DEADLINE_MS,
+  DEFAULT_RATE_LIMIT_COOLDOWN_MS,
+  DEFAULT_ERROR_COOLDOWN_MS,
+} from "./rotating";
+export type { RotatingClientOptions } from "./rotating";
+
+export { PUBLIC_SERVERS, publicServerUrls, serverLabel } from "./servers";
+export type { EsploraServer } from "./servers";
+
+export {
   scan,
   scanDeeper,
   scanBranch,

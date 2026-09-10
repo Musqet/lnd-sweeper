@@ -12,7 +12,7 @@ import {
   decipherMnemonic,
 } from "../aezeed";
 import { validateDestination, type DestinationKind } from "../address";
-import { EsploraClient, EsploraError, ScanError, estimateScanCost, estimateScanSeconds, fetchTransactions, incompleteBranches, isAbortError, scan } from "../chain";
+import { EsploraClient, EsploraError, RotatingChainClient, ScanError, estimateScanCost, estimateScanSeconds, fetchTransactions, incompleteBranches, isAbortError, scan } from "../chain";
 import { deriveAddress, deriveKey, masterFromEntropy } from "../keys";
 import { SweepError, planSweep, signSweep } from "../tx";
 import type { Network } from "../types";
@@ -65,8 +65,23 @@ export const realPorts: Ports = {
     }
   },
 
-  createChainClient(baseUrl, network, onStatus) {
-    return new EsploraClient(baseUrl, {
+  createChainClient(sources, network, onStatus) {
+    const urls = Array.isArray(sources) ? sources : [sources];
+    if (urls.length > 1) {
+      return new RotatingChainClient(urls, {
+        network,
+        ...(onStatus
+          ? {
+              onStatus: (ev) => {
+                // The rotating client only emits "switch"; all-cooling means every
+                // server is busy, which is the moment to show the slow-down note.
+                if (ev.kind === "switch") onStatus({ throttled: ev.allCooling, server: ev.server });
+              },
+            }
+          : {}),
+      });
+    }
+    return new EsploraClient(urls[0]!, {
       network,
       ...(onStatus
         ? {

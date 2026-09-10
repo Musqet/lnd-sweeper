@@ -3,7 +3,7 @@ import { EXTRA_BRANCHES, WALLET_BRANCHES, branchKey } from "../../types";
 import type { Ctx } from "../app";
 import { button, gloss, h, notice, replace, spinner } from "../dom";
 import { KIND_LABEL, errorText, formatBtc, formatSats, scriptLabel, shortId } from "../format";
-import { addressUrl, txUrl } from "../logic";
+import { addressUrl, chainSources, txUrl } from "../logic";
 import { ScanFailure, coinTypeOfPath, type ScanStatus, type TxView } from "../ports";
 import { DEFAULT_WINDOW, SCAN_TIERS } from "../state";
 
@@ -47,17 +47,21 @@ export function renderScan(ctx: Ctx): HTMLElement {
   }
   const seed = state.seed;
   // The client lives in state across steps; its pacing events are routed to whichever scan view is mounted.
-  if (!state.client) state.client = ports.createChainClient(state.sourceUrl, state.network, (st) => state.chainStatus?.(st));
+  const sources = chainSources(state.network, state.useTrustedServers, state.sourceUrl);
+  if (!state.client) state.client = ports.createChainClient(sources, state.network, (st) => state.chainStatus?.(st));
   const client = state.client;
-  const host = new URL(state.sourceUrl).host;
+  const multi = sources.length > 1;
+  // What the prose calls the source: the trusted set spreads across servers; a single URL names its host.
+  const host = multi ? `${sources.length} trusted public servers` : new URL(sources[0]!).host;
   const quick = ports.scanCost(state.network, SCAN_TIERS[0]!);
   const full = ports.scanCost(state.network, DEFAULT_WINDOW);
 
   // Live status line: lookups done this run, current rate, pacing notices.
   const lookupsEl = h("span", {}, "");
   const rateEl = h("span", {}, "");
+  const serverEl = h("span", { class: "muted" }, "");
   const paceEl = h("span", { class: "throttled" }, "");
-  const statusLine = h("div", { class: "statusline", "aria-live": "polite", hidden: true }, lookupsEl, rateEl, paceEl);
+  const statusLine = h("div", { class: "statusline", "aria-live": "polite", hidden: true }, lookupsEl, rateEl, serverEl, paceEl);
   const runProgress = new Map<RowKey, number>();
   const samples: { t: number; n: number }[] = [];
   let throttled = false;
@@ -72,6 +76,7 @@ export function renderScan(ctx: Ctx): HTMLElement {
     recoveredSince = null;
     lookupsEl.textContent = "0 lookups";
     rateEl.textContent = "";
+    serverEl.textContent = multi ? `via ${new URL(sources[0]!).host}` : "";
     paceEl.textContent = "";
     statusLine.hidden = false;
   }
@@ -106,6 +111,7 @@ export function renderScan(ctx: Ctx): HTMLElement {
     throttled = st.throttled;
     pacedRate = st.ratePerSecond;
     recoveredSince = null;
+    if (st.server) serverEl.textContent = `via ${st.server}`;
     tickStatus();
   }
   state.chainStatus = onStatus;

@@ -215,6 +215,24 @@ input.valid { border-color: var(--ok); }
 .seg label:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; z-index: 1; }
 .seg .sub { display: block; font-size: 0.75rem; opacity: 0.8; }
 
+/* Vertical source chooser: visible radios, a title and a hint per option. */
+.choices { display: flex; flex-direction: column; gap: 0.5rem; }
+.choices label.stacked {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+}
+.choices label.stacked:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.choices label.stacked:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 1px; }
+.choices label.stacked > span:first-child { font-weight: 600; }
+.choices .hint { margin-top: 0; font-weight: 400; }
+.hint.inline { display: inline; margin: 0; font-weight: 400; }
+
 /* Buttons */
 .btn {
   font: inherit;

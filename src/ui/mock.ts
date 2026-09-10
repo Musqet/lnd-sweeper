@@ -139,8 +139,9 @@ export const mockPorts: Ports = {
     } satisfies CipherSeed;
   },
 
-  createChainClient(baseUrl, network, onStatus) {
-    return new MockClient(baseUrl, network, onStatus);
+  createChainClient(sources, network, onStatus) {
+    const base = Array.isArray(sources) ? (sources[0] ?? "") : sources;
+    return new MockClient(base, network, onStatus);
   },
 
   async scan(req: ScanRequest): Promise<ScanResult> {

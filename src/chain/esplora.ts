@@ -58,7 +58,14 @@ export type ClientStatus =
   /** First successful response after a slow-down; rate is `ratePerSecond` (restored when the halving expires). */
   | { kind: "recovered"; ratePerSecond: number }
   /** Transient failure (5xx, network, our own timeout); retrying after `waitMs`. */
-  | { kind: "retry"; status: number | undefined; attempt: number; waitMs: number };
+  | { kind: "retry"; status: number | undefined; attempt: number; waitMs: number }
+  /**
+   * A rotating client changed which backend it is using. `server` is the host now
+   * serving requests; `reason` is why we moved off the previous one; `allCooling`
+   * is true when every backend is currently rate-limited or failing and we had to
+   * wait `waitMs` for the soonest to recover.
+   */
+  | { kind: "switch"; server: string; reason: "rate-limited" | "error"; allCooling: boolean; waitMs: number };
 
 /**
  * Token bucket with a temporary "slow down" mode. Tokens may go negative: a
@@ -116,12 +123,15 @@ export class EsploraError extends Error {
   readonly status: number | undefined;
   /** Verbatim response body, when there was one. */
   readonly body: string | undefined;
-  constructor(message: string, url: string, status?: number, body?: string) {
+  /** Server-supplied Retry-After in ms, when it sent one with a 429. */
+  readonly retryAfterMs: number | undefined;
+  constructor(message: string, url: string, status?: number, body?: string, retryAfterMs?: number) {
     super(message);
     this.name = "EsploraError";
     this.url = url;
     this.status = status;
     this.body = body;
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -590,6 +600,7 @@ export class EsploraClient implements ChainClient {
         url,
         429,
         result.body,
+        result.retryAfterMs,
       );
     }
     const ratePerSecond = this.pacer.slowDown();

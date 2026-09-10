@@ -72,6 +72,8 @@ export interface ScanStatus {
   throttled: boolean;
   /** Lookups a second we are running at now, when known. */
   ratePerSecond?: number;
+  /** Host of the backend now serving requests, when using more than one. */
+  server?: string;
 }
 
 export interface ScanRequest {
@@ -102,8 +104,12 @@ export interface Ports {
   checkWord(word: string): WordCheck;
   /** Decipher the 24 words. Slow (scrypt); must not block the event loop for long. Throws UiError. */
   decipher(words: string[], passphrase: string): Promise<CipherSeed>;
-  /** `onStatus` receives pacing events (slow-down, recovered) for the life of the client. */
-  createChainClient(baseUrl: string, network: Network, onStatus?: (s: ScanStatus) => void): ChainClient;
+  /**
+   * Build the chain client. One URL is used directly; several are rotated across
+   * (failover) so a single server's rate limit does not stall a scan.
+   * `onStatus` receives pacing and rotation events for the life of the client.
+   */
+  createChainClient(sources: string | string[], network: Network, onStatus?: (s: ScanStatus) => void): ChainClient;
   /** Throws ScanFailure (with partial results) when it cannot finish. */
   scan(req: ScanRequest): Promise<ScanResult>;
   /** Branches that have not yet reached the recovery window past their last used address. */
