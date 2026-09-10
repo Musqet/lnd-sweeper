@@ -76,7 +76,7 @@ export function renderScan(ctx: Ctx): HTMLElement {
     recoveredSince = null;
     lookupsEl.textContent = "0 lookups";
     rateEl.textContent = "";
-    serverEl.textContent = multi ? `via ${new URL(sources[0]!).host}` : "";
+    serverEl.textContent = multi ? `across ${sources.length} servers` : "";
     paceEl.textContent = "";
     statusLine.hidden = false;
   }
@@ -111,7 +111,9 @@ export function renderScan(ctx: Ctx): HTMLElement {
     throttled = st.throttled;
     pacedRate = st.ratePerSecond;
     recoveredSince = null;
-    if (st.server) serverEl.textContent = `via ${st.server}`;
+    // In multi-server mode the label stays "across N servers"; a single custom
+    // server has no rotation, so leave its (empty) label alone.
+    if (!multi && st.server) serverEl.textContent = `via ${st.server}`;
     tickStatus();
   }
   state.chainStatus = onStatus;
@@ -213,6 +215,9 @@ export function renderScan(ctx: Ctx): HTMLElement {
 
   async function run(opts: { resumeFrom?: ScanResult | undefined; window?: number | undefined } = {}): Promise<void> {
     if (slowTimer) { clearInterval(slowTimer); slowTimer = null; }
+    // The client is cached across scans; drop any cooldowns / give-up / throttle
+    // state from a previous attempt so this one starts clean.
+    client.reset?.();
     controller = new AbortController();
     const window = opts.window ?? state.scanWindow;
     const text = opts.resumeFrom && window > state.scanWindow

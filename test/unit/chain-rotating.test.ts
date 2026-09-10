@@ -94,7 +94,7 @@ describe("RotatingChainClient", () => {
     const { client, calls, statuses } = makeRotating([A, B], {
       "a.example": { "blocks/tip/height": { body: "800000" } },
       "b.example": { "blocks/tip/height": { body: "999999" } },
-    });
+    }, { strategy: "failover" });
     expect(await client.getTipHeight()).toBe(800000);
     expect(await client.getTipHeight()).toBe(800000);
     expect(calls.every((c) => c.host === "a.example")).toBe(true);
@@ -105,7 +105,7 @@ describe("RotatingChainClient", () => {
     const { client, sleeps, statuses, calls } = makeRotating([A, B], {
       "a.example": { "blocks/tip/height": { status: 429, body: "slow down" } },
       "b.example": { "blocks/tip/height": { body: "800001" } },
-    });
+    }, { strategy: "failover" });
     expect(await client.getTipHeight()).toBe(800001);
     expect(sleeps).toEqual([]); // no waiting: we rotated
     expect(calls.map((c) => c.host)).toEqual(["a.example", "b.example"]);
@@ -118,7 +118,7 @@ describe("RotatingChainClient", () => {
     const { client, statuses, calls, advance } = makeRotating([A, B], {
       "a.example": { "blocks/tip/height": [{ status: 429 }, { body: "111" }] },
       "b.example": { "blocks/tip/height": { body: "222" } },
-    });
+    }, { strategy: "failover" });
     expect(await client.getTipHeight()).toBe(222); // A 429 -> B
     advance(31_000); // past A's default 30 s cooldown
     expect(await client.getTipHeight()).toBe(111); // back on A
@@ -145,7 +145,7 @@ describe("RotatingChainClient", () => {
         },
       },
       "b.example": { "blocks/tip/height": { body: "42" } },
-    });
+    }, { strategy: "failover" });
     expect(await client.getTipHeight()).toBe(42);
     expect(calls.some((c) => c.host === "b.example")).toBe(true);
     const sw = statuses.find((s) => s.kind === "switch") as { reason: string } | undefined;
@@ -214,7 +214,7 @@ describe("RotatingChainClient", () => {
         "a.example": { "blocks/tip/height": [{ body: "100" }, { status: 429 }, { body: "101" }] },
         "b.example": { "blocks/tip/height": [{ status: 429 }, { body: "201" }] },
       },
-      { deadlineMs: 60_000, rateLimitCooldownMs: 30_000 },
+      { deadlineMs: 60_000, rateLimitCooldownMs: 30_000, strategy: "failover" },
     );
     expect(await client.getTipHeight()).toBe(100); // first success
     advance(10 * 60_000); // idle 10 min, well past the 60 s deadline
@@ -245,13 +245,17 @@ describe("RotatingChainClient.broadcast", () => {
   const HEX = "aa".repeat(32); // not a real tx; used only to key the POST route
   const TXID = "bb".repeat(32);
 
-  it("returns the first backend that accepts and does not hit the rest", async () => {
-    const { client, calls } = makeRotating([A, B], {
+  it("broadcasts to every backend and returns an acceptance (propagation)", async () => {
+    const { client, calls } = makeRotating([A, B, C], {
       "a.example": { tx: { body: TXID } },
-      "b.example": { tx: { body: "unused" } },
+      "b.example": { tx: { body: TXID } },
+      "c.example": { tx: { body: TXID } },
     });
     expect(await client.broadcast(HEX)).toBe(TXID);
-    expect(calls.every((c) => c.host === "a.example")).toBe(true);
+    const posts = calls.filter((c) => c.path === "tx" && c.method === "POST").map((c) => c.host);
+    expect(posts).toContain("a.example");
+    expect(posts).toContain("b.example");
+    expect(posts).toContain("c.example");
   });
 
   it("moves past a failing backend to one that accepts", async () => {
@@ -280,5 +284,121 @@ describe("RotatingChainClient.broadcast", () => {
     const err = await client.broadcast(HEX).catch((e) => e);
     expect(err).toBeInstanceOf(EsploraError);
     expect(String(err.message)).toContain("bad-txns-inputs-missingorspent");
+  });
+});
+
+describe("RotatingChainClient spread strategy", () => {
+  it("shares lookups round-robin across healthy backends", async () => {
+    const { client, calls } = makeRotating([A, B, C], {
+      "a.example": { "blocks/tip/height": { body: "10" } },
+      "b.example": { "blocks/tip/height": { body: "10" } },
+      "c.example": { "blocks/tip/height": { body: "10" } },
+    }); // default strategy is "spread"
+    for (let i = 0; i < 6; i++) await client.getTipHeight();
+    const per = (h: string): number => calls.filter((c) => c.host === h).length;
+    expect(per("a.example")).toBe(2);
+    expect(per("b.example")).toBe(2);
+    expect(per("c.example")).toBe(2);
+  });
+
+  it("skips a cooling backend and keeps sharing across the rest", async () => {
+    const { client, calls } = makeRotating([A, B, C], {
+      "a.example": { "blocks/tip/height": { body: "10" } },
+      "b.example": { "blocks/tip/height": { status: 429 } }, // B always throttled
+      "c.example": { "blocks/tip/height": { body: "10" } },
+    });
+    for (let i = 0; i < 4; i++) await client.getTipHeight();
+    // B is cooled after its first 429; the rest carry the load.
+    expect(calls.filter((c) => c.host === "a.example").length).toBeGreaterThan(0);
+    expect(calls.filter((c) => c.host === "c.example").length).toBeGreaterThan(0);
+  });
+});
+
+describe("RotatingChainClient.getFeeEstimates", () => {
+  it("queries all backends and takes the highest per confirmation target", async () => {
+    const { client, calls } = makeRotating([A, B], {
+      "a.example": { "fee-estimates": { body: JSON.stringify({ "1": 5, "2": 3 }) } },
+      "b.example": { "fee-estimates": { body: JSON.stringify({ "1": 4, "2": 6, "3": 2 }) } },
+    });
+    expect(await client.getFeeEstimates()).toEqual({ "1": 5, "2": 6, "3": 2 });
+    const hosts = calls.filter((c) => c.path === "fee-estimates").map((c) => c.host);
+    expect(hosts).toContain("a.example");
+    expect(hosts).toContain("b.example");
+  });
+
+  it("still returns fees when one server is throttled", async () => {
+    const { client } = makeRotating([A, B], {
+      "a.example": { "fee-estimates": { status: 429 } },
+      "b.example": { "fee-estimates": { body: JSON.stringify({ "1": 7 }) } },
+    });
+    expect(await client.getFeeEstimates()).toEqual({ "1": 7 });
+  });
+
+  it("throws only when every server fails", async () => {
+    const { client } = makeRotating([A, B], {
+      "a.example": { "fee-estimates": { status: 429 } },
+      "b.example": { "fee-estimates": { status: 500 } },
+    });
+    await expect(client.getFeeEstimates()).rejects.toBeInstanceOf(EsploraError);
+  });
+
+  it("does not wait for a slow backend past the grace window", async () => {
+    const { client } = makeRotating(
+      [A, B],
+      {
+        // A answers late with a higher figure; the grace elapses first, so it is ignored.
+        "a.example": { "fee-estimates": () => new Promise((r) => setTimeout(() => r(new Response(JSON.stringify({ "1": 100 }))), 100)) },
+        "b.example": { "fee-estimates": { body: JSON.stringify({ "1": 9 }) } },
+      },
+      { feeGraceMs: 10, backend: { ratePerSecond: 1e6, timeoutMs: 500 } },
+    );
+    expect(await client.getFeeEstimates()).toEqual({ "1": 9 });
+  });
+});
+
+describe("RotatingChainClient deadline poisoning and reset", () => {
+  it("poisons the pool at the deadline so later lookups stop immediately (no re-hammering)", async () => {
+    const { client, calls } = makeRotating(
+      [A, B],
+      {
+        "a.example": { "blocks/tip/height": { status: 429 } },
+        "b.example": { "blocks/tip/height": { status: 429 } },
+      },
+      { deadlineMs: 60_000, rateLimitCooldownMs: 30_000 },
+    );
+    await expect(client.getTipHeight()).rejects.toBeInstanceOf(EsploraError); // hits deadline, poisons
+    const n = calls.length;
+    // Concurrent siblings on the poisoned pool all reject with no new network calls.
+    const results = await Promise.allSettled([client.getTipHeight(), client.getTipHeight(), client.getTipHeight()]);
+    expect(results.every((r) => r.status === "rejected")).toBe(true);
+    expect(calls.length).toBe(n);
+  });
+
+  it("reset() clears the poison and cooldowns so the client tries again", async () => {
+    const { client, calls } = makeRotating(
+      [A, B],
+      {
+        "a.example": { "blocks/tip/height": { status: 429 } },
+        "b.example": { "blocks/tip/height": { status: 429 } },
+      },
+      { deadlineMs: 60_000, rateLimitCooldownMs: 30_000 },
+    );
+    await expect(client.getTipHeight()).rejects.toBeTruthy(); // poisoned
+    const n = calls.length;
+    await expect(client.getTipHeight()).rejects.toBeTruthy(); // still poisoned: no new calls
+    expect(calls.length).toBe(n);
+    client.reset();
+    await expect(client.getTipHeight()).rejects.toBeTruthy(); // tries again (re-poisons), but hit the network
+    expect(calls.length).toBeGreaterThan(n);
+  });
+
+  it("emits the all-cooling throttle once per episode, not once per lookup", async () => {
+    const { client, statuses } = makeRotating([A, B], {
+      "a.example": { "blocks/tip/height": [{ status: 429 }, { body: "1" }] },
+      "b.example": { "blocks/tip/height": [{ status: 429 }, { body: "2" }] },
+    });
+    await client.getTipHeight();
+    const coolings = statuses.filter((s) => s.kind === "switch" && (s as { allCooling: boolean }).allCooling);
+    expect(coolings).toHaveLength(1);
   });
 });

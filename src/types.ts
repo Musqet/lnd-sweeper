@@ -172,6 +172,8 @@ export interface ChainClient {
   getFeeEstimates(): Promise<Record<string, number>>;
   /** Returns the txid on success; throws with the backend's message on rejection. */
   broadcast(rawTxHex: string): Promise<string>;
+  /** Optional: drop transient state (cooldowns, rotation, give-up) before a fresh scan on a reused client. */
+  reset?(): void;
 }
 
 export interface ScanProgress {

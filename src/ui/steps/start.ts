@@ -48,7 +48,7 @@ export function renderStart(ctx: Ctx): HTMLElement {
   const trustedToggle = h("div", { class: "field", hidden: !hasTrustedServers(state.network) },
     h("span", { class: "group-label" }, "Chain data source"),
     h("div", { class: "choices", role: "radiogroup", "aria-label": "Chain data source" },
-      h("label", { class: "stacked" }, h("span", {}, trustedInput, " Trusted public servers ", h("span", { class: "hint inline" }, "(recommended)")), h("span", { class: "hint" }, h("span", {}, "Spreads the scan across ", trustedNames, ", moving on the moment one rate-limits, so recovery does not stall. Failover, not round-robin: one server sees your addresses unless it limits you."))),
+      h("label", { class: "stacked" }, h("span", {}, trustedInput, " Trusted public servers ", h("span", { class: "hint inline" }, "(recommended)")), h("span", { class: "hint" }, h("span", {}, "Shares the scan out across ", trustedNames, " round-robin, so no single server is overloaded and recovery does not stall. Each server sees a fraction of your addresses; fee lookups and the broadcast go to all of them."))),
       h("label", { class: "stacked" }, h("span", {}, ownInput, " Your own server"), h("span", { class: "hint" }, "Use one server you choose, and only that one. Best for privacy and for lnd's full 2,500-address window.")),
     ),
   );
@@ -129,7 +129,7 @@ export function renderStart(ctx: Ctx): HTMLElement {
       h("summary", {}, "Privacy: what the data source learns"),
       h("div", { class: "body" },
         h("p", { class: "small", style: "margin-top:0.75rem" }, "To find your coins the page asks the data source about every address the wallet could have used: a few hundred for the quick scan, up to about 17,500 for lnd's full window. That server therefore learns which addresses belong together, their balances, your IP address, and the transaction you broadcast. Public servers also rate-limit heavy use, which is why the trusted-servers option spreads a scan across several of them, moving on only when one asks us to slow down, so a big scan still finishes."),
-        h("p", { class: "small" }, "Trade-off: with the trusted servers, in the usual case one server sees your addresses (the tool only spreads to the others when the first rate-limits), but any server it does fall back to sees a slice too. With your own server, one server you control sees everything and nothing leaks elsewhere. For the strongest privacy, run your own mempool or Esplora instance, or open this page in a browser that routes through Tor."),
+        h("p", { class: "small" }, "Trade-off: with the trusted servers, your addresses are shared out across several servers so each sees only a fraction, and fee lookups and the final broadcast go to all of them. With your own server, one server you control sees everything and nothing leaks elsewhere. For the strongest privacy, run your own mempool or Esplora instance, or open this page in a browser that routes through Tor."),
       ),
     ),
     h("details", { class: "panel" },

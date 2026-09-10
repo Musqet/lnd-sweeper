@@ -23,7 +23,7 @@ export {
   DEFAULT_RATE_LIMIT_COOLDOWN_MS,
   DEFAULT_ERROR_COOLDOWN_MS,
 } from "./rotating";
-export type { RotatingClientOptions } from "./rotating";
+export type { RotatingClientOptions, RotateStrategy } from "./rotating";
 
 export { PUBLIC_SERVERS, publicServerUrls, serverLabel } from "./servers";
 export type { EsploraServer } from "./servers";
