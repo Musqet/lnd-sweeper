@@ -17,9 +17,11 @@
  * equivalent of "connect to your own Electrum" is to point the tool at your own
  * mempool.space or Esplora (electrs) instance via the custom-URL field.
  *
- * Ordering matters: the rotating client prefers the first reachable server and
- * only spreads to the others when one rate-limits, so the most reliable /
- * highest-limit server goes first.
+ * Ordering: the trusted-servers path round-robins across every healthy entry,
+ * so position does not decide how much load a server takes. It still matters in
+ * two narrower ways: the "failover" strategy prefers the earliest-listed server,
+ * and the UI builds its explorer links from the first entry. Put the most
+ * reliable / highest-limit server first.
  */
 import type { Network } from "../types";
 
