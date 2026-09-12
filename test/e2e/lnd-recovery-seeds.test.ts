@@ -21,7 +21,7 @@ import { EXTRA_BRANCHES, WALLET_BRANCHES } from "../../src/types";
 import { decipherMnemonic, InvalidPassphraseError } from "../../src/aezeed";
 import { deriveBranchAddresses, masterFromEntropy } from "../../src/keys";
 import { SCAN_TIERS, estimateScanCost, scan } from "../../src/chain";
-import { planSweep, signSweep } from "../../src/tx";
+import { feeForVsize, planSweep, signSweep } from "../../src/tx";
 import { start as startShim, type Shim } from "./esplora-shim";
 import { startBitcoind, type Bitcoind } from "./harness/bitcoind";
 import { startLnd, type Lnd, type LndUtxo } from "./harness/lnd";
@@ -386,7 +386,12 @@ describe("seed-specific recovery scenarios", () => {
         const plan = planSweep(r.utxos, destination, feeRate, { tipHeight: await client.getTipHeight() });
         const signed = signSweep(plan, keyFor(master!));
         sweep = signed;
-        expect(signed.feeSats).toBe(Math.ceil(signed.vsize * SHIM_FEE_RATE));
+        // The fee is locked at plan time from the estimated vsize, which is an upper
+        // bound: low-R signatures are only ever shorter than assumed, so the signed tx
+        // can be a few vbytes smaller. Assert the fee against the estimate (its true
+        // source), and that the bound holds, rather than against the actual vsize.
+        expect(signed.feeSats).toBe(feeForVsize(plan.estimatedVsize, SHIM_FEE_RATE));
+        expect(signed.vsize).toBeLessThanOrEqual(plan.estimatedVsize);
         const txid = await client.broadcast(signed.rawTxHex);
         expect(txid).toBe(signed.txid);
         await b.mine(1);
