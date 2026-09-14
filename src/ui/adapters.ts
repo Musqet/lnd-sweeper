@@ -106,6 +106,8 @@ export const realPorts: Ports = {
           window: req.window,
           onProgress: req.onProgress,
           ...(req.resumeFrom ? { resumeFrom: req.resumeFrom } : {}),
+          ...(req.branches ? { branches: req.branches } : {}),
+          ...(req.coinTypes ? { coinTypes: req.coinTypes } : {}),
           ...(req.signal ? { signal: req.signal } : {}),
         },
       );
@@ -120,12 +122,18 @@ export const realPorts: Ports = {
     }
   },
 
-  incompleteBranches(result, window) {
-    return incompleteBranches(result, window);
+  incompleteBranches(result, window, branches) {
+    // Passing `branches` undefined falls through to the chain function's default (all wallet branches).
+    return incompleteBranches(result, window, branches);
   },
 
-  scanCost(network, window, resumeFrom) {
-    const { requests } = estimateScanCost(network, { window, ...(resumeFrom ? { resumeFrom } : {}) });
+  scanCost(network, window, resumeFrom, opts) {
+    const { requests } = estimateScanCost(network, {
+      window,
+      ...(resumeFrom ? { resumeFrom } : {}),
+      ...(opts?.branches ? { branches: opts.branches } : {}),
+      ...(opts?.coinTypes ? { coinTypes: opts.coinTypes } : {}),
+    });
     return { requests, seconds: estimateScanSeconds(requests) };
   },
 

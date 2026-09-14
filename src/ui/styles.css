@@ -377,6 +377,10 @@ details.panel > .body { padding: 0 1rem 1rem; border-top: 1px solid var(--line);
 .kinds { display: grid; gap: 0.75rem; margin: 0.75rem 0 1rem; }
 .kind { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: 0.75rem 1rem; }
 .kind header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.75rem; margin-bottom: 0.5rem; }
+.deepen { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem 0.75rem; }
+.deepen:empty { display: none; }
+.deepen .est { color: var(--ink-2); font-size: 0.8125rem; }
+.deepen .est.muted { color: var(--ink-3); }
 .branch { display: grid; grid-template-columns: minmax(9rem, 14rem) 1fr auto; align-items: center; gap: 0.25rem 0.75rem; padding: 0.375rem 0; border-top: 1px solid var(--line); }
 .b-label { color: var(--ink-2); font-size: 0.9375rem; }
 .b-label .mono { color: var(--ink-3); font-size: 0.8125rem; }

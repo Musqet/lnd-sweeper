@@ -556,3 +556,52 @@ describe("scan cost", () => {
     expect(estimateScanCost("mainnet", { window: 100, resumeFrom: r }).requests).toBe(500);
   });
 });
+
+describe("per-path deepen: following one used path past the 100 gap", () => {
+  const W = 100;
+  // m/86' receive was used at index 5 (now empty) and holds a stranded coin at index 150,
+  // which is beyond a 100-unused gap after index 5, so the default gap-100 pass will not reach it.
+  const used: Record<string, Utxo[]> = {
+    [addr(0, B86E, 5)]: [],
+    [addr(0, B86E, 150)]: [confirmed("t150", 0, 90_000)],
+  };
+  const account86: Branch[] = [B86E, B86I];
+
+  it("the gap-100 pass stops each path at the gap and misses a coin beyond it", async () => {
+    const c = fakeClient(used);
+    const base = await scan(deriver, c.client, "mainnet", { window: W, batchSize: 50 });
+    expect(base.totalSats).toBe(0);
+    expect(base.depth[branchKey(B86E)]).toBe(106); // 5 + 1 + 100, vein-extended past the last used
+    expect(base.depth[branchKey(B84E)]).toBe(100); // a dead path stops at exactly the gap
+  });
+
+  it("deepening only that account finds the stranded coin and never touches the other paths", async () => {
+    const c = fakeClient(used);
+    const base = await scan(deriver, c.client, "mainnet", { window: W, batchSize: 50 });
+    const before = c.statsCalls.length;
+    const deep = await scan(deriver, c.client, "mainnet", {
+      window: DEFAULT_RECOVERY_WINDOW,
+      batchSize: 50,
+      branches: account86,
+      coinTypes: [0],
+      resumeFrom: base,
+    });
+    expect(deep.totalSats).toBe(90_000);
+    expect(deep.utxos.map((u) => u.owner.index)).toContain(150);
+    // Other paths are left exactly where the baseline stopped them: no repeat of scanning everything to 2,500.
+    expect(deep.depth[branchKey(B84E)]).toBe(100);
+    expect(deep.depth[branchKey(B49E)]).toBe(100);
+    // The deepen only looked up m/86' addresses.
+    expect(c.statsCalls.slice(before).every((a) => a.startsWith("0/86/"))).toBe(true);
+  });
+
+  it("the per-path deepen cost is positive before and zero after", async () => {
+    const c = fakeClient(used);
+    const base = await scan(deriver, c.client, "mainnet", { window: W, batchSize: 50 });
+    const costBefore = estimateScanCost("mainnet", { window: DEFAULT_RECOVERY_WINDOW, branches: account86, coinTypes: [0], resumeFrom: base });
+    expect(costBefore.requests).toBeGreaterThan(0);
+    const deep = await scan(deriver, c.client, "mainnet", { window: DEFAULT_RECOVERY_WINDOW, batchSize: 50, branches: account86, coinTypes: [0], resumeFrom: base });
+    const costAfter = estimateScanCost("mainnet", { window: DEFAULT_RECOVERY_WINDOW, branches: account86, coinTypes: [0], resumeFrom: deep });
+    expect(costAfter.requests).toBe(0);
+  });
+});
