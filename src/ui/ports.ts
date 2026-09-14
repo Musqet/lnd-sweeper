@@ -84,6 +84,10 @@ export interface ScanRequest {
   window: number;
   /** Continue an earlier result: unfinished branches are finished, and a larger `window` extends every branch. */
   resumeFrom?: ScanResult | undefined;
+  /** Restrict the scan to these branches (a per-path deepen). Default: all wallet branches. */
+  branches?: readonly Branch[] | undefined;
+  /** Restrict the scan to these coin type passes. Default: the network's usual passes. */
+  coinTypes?: readonly (0 | 1)[] | undefined;
   onProgress: (p: ScanProgress) => void;
   signal?: AbortSignal | undefined;
 }
@@ -112,10 +116,10 @@ export interface Ports {
   createChainClient(sources: string | string[], network: Network, onStatus?: (s: ScanStatus) => void): ChainClient;
   /** Throws ScanFailure (with partial results) when it cannot finish. */
   scan(req: ScanRequest): Promise<ScanResult>;
-  /** Branches that have not yet reached the recovery window past their last used address. */
-  incompleteBranches(result: ScanResult, window: number): { coinType: 0 | 1; branch: Branch }[];
-  /** Lookups and rough seconds a scan to `window` needs; with `resumeFrom`, only the extra work beyond that result. */
-  scanCost(network: Network, window: number, resumeFrom?: ScanResult): { requests: number; seconds: number };
+  /** Branches that have not yet reached the recovery window past their last used address. Pass `branches` to scope the check to a single path. */
+  incompleteBranches(result: ScanResult, window: number, branches?: readonly Branch[]): { coinType: 0 | 1; branch: Branch }[];
+  /** Lookups and rough seconds a scan to `window` needs; with `resumeFrom`, only the extra work beyond that result. `opts.branches`/`opts.coinTypes` scope it to a single path. */
+  scanCost(network: Network, window: number, resumeFrom?: ScanResult, opts?: { branches?: readonly Branch[]; coinTypes?: readonly (0 | 1)[] }): { requests: number; seconds: number };
   /** Transactions touching these addresses, newest first, de-duplicated. */
   fetchTransactions(client: ChainClient, addresses: readonly DerivedAddress[], signal?: AbortSignal): Promise<TxView[]>;
   validateDestination(address: string, network: Network): DestinationCheck;

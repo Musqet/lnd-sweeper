@@ -39,6 +39,11 @@ function sameBranch(a: DerivedAddress, b: Branch): boolean {
   return a.purpose === b.purpose && a.change === b.change && a.kind === b.kind;
 }
 
+/** Every branch of one account path, receive and change, including the rarely-used m/49' change encoding. */
+function accountBranchesFor(purpose: Purpose): Branch[] {
+  return [...WALLET_BRANCHES, ...EXTRA_BRANCHES].filter((b) => b.purpose === purpose);
+}
+
 export function renderScan(ctx: Ctx): HTMLElement {
   const { state, ports } = ctx;
   if (!state.seed) {
@@ -54,7 +59,6 @@ export function renderScan(ctx: Ctx): HTMLElement {
   // What the prose calls the source: the trusted set spreads across servers; a single URL names its host.
   const host = multi ? `${sources.length} trusted public servers` : new URL(sources[0]!).host;
   const quick = ports.scanCost(state.network, SCAN_TIERS[0]!);
-  const full = ports.scanCost(state.network, DEFAULT_WINDOW);
 
   // Live status line: lookups done this run, current rate, pacing notices.
   const lookupsEl = h("span", {}, "");
@@ -121,6 +125,8 @@ export function renderScan(ctx: Ctx): HTMLElement {
   const progress = new Map<RowKey, ScanProgress>();
   const rows = new Map<RowKey, Row>();
   const cards = new Map<`${0 | 1}/${Purpose}`, HTMLElement>();
+  // Per-account "scan this path deeper" controls, filled once a scan completes.
+  const deepenSlots = new Map<`${0 | 1}/${Purpose}`, HTMLElement>();
   const kinds0 = h("div", { class: "kinds" });
   const kinds1Wrap = h("div", { hidden: true },
     h("p", { class: "small muted", style: "margin:1rem 0 0" }, "Also checking ", gloss("coin type 1", "a second set of paths (m/…'/1'/…) that some tools use for test networks; lnd itself always used coin type 0"), " paths, in case this wallet was created by another tool."),
@@ -142,10 +148,13 @@ export function renderScan(ctx: Ctx): HTMLElement {
     if (!card) {
       const path = `m/${b.purpose}'/${coinType}'`;
       const purposeName = b.purpose === 49 ? "Nested SegWit" : b.purpose === 84 ? "Native SegWit" : "Taproot";
+      const deepen = h("div", { class: "deepen" });
+      deepenSlots.set(cardKey, deepen);
       card = h("section", { class: "kind", "aria-label": `Path ${path}` },
         h("header", {},
           h("span", { class: "kind-name" }, "Path ", h("span", { class: "mono" }, path)),
           h("span", { class: "small muted" }, `${purposeName} account`, gloss("", "the derivation path: which branch of the wallet's key tree these addresses come from")),
+          deepen,
         ),
       );
       cards.set(cardKey, card);
@@ -213,14 +222,19 @@ export function renderScan(ctx: Ctx): HTMLElement {
 
   let slowTimer: ReturnType<typeof setInterval> | null = null;
 
-  async function run(opts: { resumeFrom?: ScanResult | undefined; window?: number | undefined } = {}): Promise<void> {
+  async function run(opts: { resumeFrom?: ScanResult | undefined; window?: number | undefined; branches?: readonly Branch[] | undefined; coinTypes?: readonly (0 | 1)[] | undefined; label?: string | undefined } = {}): Promise<void> {
     if (slowTimer) { clearInterval(slowTimer); slowTimer = null; }
     // The client is cached across scans; drop any cooldowns / give-up / throttle
     // state from a previous attempt so this one starts clean.
     client.reset?.();
     controller = new AbortController();
     const window = opts.window ?? state.scanWindow;
-    const text = opts.resumeFrom && window > state.scanWindow
+    // A per-path deepen scans only some branches; it must not move the baseline window
+    // (that governs when other paths count as finished) nor scope-check against every path.
+    const scoped = opts.branches;
+    const text = opts.label
+      ? opts.label
+      : opts.resumeFrom && window > state.scanWindow
         ? `Widening every branch from ${state.scanWindow.toLocaleString("en-GB")} to ${window.toLocaleString("en-GB")} unused addresses. Only the new stretch is looked up.`
         : opts.resumeFrom
           ? "Continuing from where the last attempt stopped. Finished branches are not checked again."
@@ -228,11 +242,12 @@ export function renderScan(ctx: Ctx): HTMLElement {
     replace(status, spinner(text));
     replace(summary);
     replace(actions, button("Stop", () => controller?.abort(), { small: true }));
+    for (const slot of deepenSlots.values()) replace(slot);
     resetStatus();
     try {
-      const result = await ports.scan({ seed, network: state.network, client, window, resumeFrom: opts.resumeFrom, onProgress, signal: controller.signal });
+      const result = await ports.scan({ seed, network: state.network, client, window, resumeFrom: opts.resumeFrom, branches: opts.branches, coinTypes: opts.coinTypes, onProgress, signal: controller.signal });
       state.scan = result;
-      state.scanWindow = window;
+      if (!scoped) state.scanWindow = window;
       clearThrottle();
       replace(status);
       markDone(result);
@@ -245,8 +260,8 @@ export function renderScan(ctx: Ctx): HTMLElement {
         state.scan = partial;
         markDone(partial);
       }
-      const unfinished = partial ? ports.incompleteBranches(partial, window).length : 0;
-      const cont = button("Continue the scan", () => void run({ resumeFrom: partial, window }), { primary: true });
+      const unfinished = partial ? ports.incompleteBranches(partial, window, scoped).length : 0;
+      const cont = button("Continue the scan", () => void run({ resumeFrom: partial, window, branches: opts.branches, coinTypes: opts.coinTypes, label: opts.label }), { primary: true });
       if (aborted) {
         replace(status, notice("info",
           h("p", {}, h("strong", {}, "Scan stopped."), ` Nothing has been changed on chain.${partial ? ` What was found so far is shown below; ${unfinished} branch${unfinished === 1 ? " is" : "es are"} unfinished.` : ""}`),
@@ -266,11 +281,11 @@ export function renderScan(ctx: Ctx): HTMLElement {
           if (left <= 0 && slowTimer) {
             clearInterval(slowTimer);
             slowTimer = null;
-            void run({ resumeFrom: partial, window });
+            void run({ resumeFrom: partial, window, branches: opts.branches, coinTypes: opts.coinTypes, label: opts.label });
           }
         }, 1000);
         showSummary(partial, { incomplete: unfinished > 0 });
-        replace(actions, button("Continue now", () => void run({ resumeFrom: partial, window }), { primary: true }), h("span", { class: "spacer" }), button("Stop", () => { if (slowTimer) { clearInterval(slowTimer); slowTimer = null; } replace(status, notice("info", h("p", {}, "Paused. Press Continue when you are ready."))); replace(actions, cont, h("span", { class: "spacer" }), button("Back", () => ctx.go("seed"))); }, { small: true }));
+        replace(actions, button("Continue now", () => void run({ resumeFrom: partial, window, branches: opts.branches, coinTypes: opts.coinTypes, label: opts.label }), { primary: true }), h("span", { class: "spacer" }), button("Stop", () => { if (slowTimer) { clearInterval(slowTimer); slowTimer = null; } replace(status, notice("info", h("p", {}, "Paused. Press Continue when you are ready."))); replace(actions, cont, h("span", { class: "spacer" }), button("Back", () => ctx.go("seed"))); }, { small: true }));
         return;
       } else {
         const detail = e instanceof ScanFailure && e.detail ? e.detail : undefined;
@@ -289,29 +304,29 @@ export function renderScan(ctx: Ctx): HTMLElement {
     }
   }
 
-  /** The "scan deeper" control: extend every path to lnd's recovery window, with the extra cost shown first. */
-  function deeperPanel(result: ScanResult): HTMLElement {
-    const current = state.scanWindow;
-    const nextTiers = SCAN_TIERS.filter((w) => w > current);
-    const items: HTMLElement[] = [];
-    for (const w of nextTiers) {
-      const c = ports.scanCost(state.network, w, result);
-      items.push(h("div", { class: "tier" },
-        button(w === DEFAULT_WINDOW ? `Extend every path to lnd's recovery window of ${w.toLocaleString("en-GB")}` : `Extend every path to a gap of ${w.toLocaleString("en-GB")}`, () => void run({ resumeFrom: result, window: w }), { small: true, primary: w === nextTiers[0] }),
-        h("span", { class: "est" }, `about ${c.requests.toLocaleString("en-GB")} more lookups, ${minutesText(c.seconds)} on a public server`),
-      ));
+  /**
+   * Fill each account card's "scan this path deeper" control. A path that stopped at the
+   * 100-unused gap can be pushed on its own to lnd's full 2,500 window, in case a coin
+   * sits beyond the gap. Dead paths are left alone unless the user asks; only the path
+   * they choose is looked up further, so there is no repeat of scanning every path to 2,500.
+   */
+  function refreshDeepenControls(result: ScanResult): void {
+    for (const [cardKey, slot] of deepenSlots) {
+      const [ctStr, pStr] = cardKey.split("/");
+      const coinType = Number(ctStr) as 0 | 1;
+      const purpose = Number(pStr) as Purpose;
+      const branches = accountBranchesFor(purpose);
+      const c = ports.scanCost(state.network, DEFAULT_WINDOW, result, { branches, coinTypes: [coinType] });
+      if (c.requests > 0) {
+        const label = `Deepening the m/${purpose}' path to lnd's full recovery window of ${DEFAULT_WINDOW.toLocaleString("en-GB")} unused addresses in a row. Only this path is looked up.`;
+        replace(slot,
+          button("Scan this path deeper", () => void run({ resumeFrom: result, window: DEFAULT_WINDOW, branches, coinTypes: [coinType], label }), { small: true }),
+          h("span", { class: "est" }, `to lnd's window of ${DEFAULT_WINDOW.toLocaleString("en-GB")}, about ${c.requests.toLocaleString("en-GB")} more lookups, ${minutesText(c.seconds)}`),
+        );
+      } else {
+        replace(slot, h("span", { class: "est muted" }, `Checked to lnd's full window of ${DEFAULT_WINDOW.toLocaleString("en-GB")}.`));
+      }
     }
-    return h("details", { class: "panel", open: nextTiers.length > 0 && result.totalSats === 0 },
-      h("summary", {}, "Scan deeper"),
-      h("div", { class: "body" },
-        h("p", { class: "small", style: "margin-top:0.75rem" },
-          current < DEFAULT_WINDOW
-            ? `lnd's own recovery does not stop at ${current.toLocaleString("en-GB")}: it only gives up after ${DEFAULT_WINDOW.toLocaleString("en-GB")} unused addresses in a row, and also checks one rarely used encoding of the m/49' change path. Extending to that window finds exactly what lnd itself would find. It continues from the current result, so nothing is looked up twice, but on a public server it is slow.`
-            : `Every path has been followed to lnd's own recovery window of ${DEFAULT_WINDOW.toLocaleString("en-GB")} unused addresses in a row, which finds what lnd itself would find. Going further would not find anything lnd could recover.`,
-        ),
-        items.length ? h("div", { class: "tiers" }, ...items) : null,
-      ),
-    );
   }
 
   function showSummary(result: ScanResult, flags: { incomplete?: boolean } = {}): void {
@@ -360,15 +375,13 @@ export function renderScan(ctx: Ctx): HTMLElement {
           )
         : null,
       result.totalSats === 0 && !flags.incomplete
-        ? notice("info", h("p", {}, state.scanWindow < DEFAULT_WINDOW
-            ? `Nothing within a gap of ${state.scanWindow} unused addresses. Before concluding the wallet is empty, scan deeper below: a node that created many addresses can leave a longer gap. It can also mean the coins were already moved, the seed belongs to a different node, or the wrong network is selected.`
-            : "This can mean the coins were already moved, the seed belongs to a different node, the wrong network is selected, or the funds sit on addresses further along than the scan went. The list below shows what was checked."))
+        ? notice("info", h("p", {}, `Nothing within ${state.scanWindow.toLocaleString("en-GB")} unused addresses in a row on any path. Before concluding the wallet is empty: a path shown as "used, now empty" held coins that have since moved, and a node that generated many addresses without using them can leave a gap longer than ${state.scanWindow.toLocaleString("en-GB")}. If either might apply, use "Scan this path deeper" on that path above to follow it to lnd's full recovery window of ${DEFAULT_WINDOW.toLocaleString("en-GB")}. It can also mean the coins were already moved, the seed belongs to a different node, or the wrong network is selected.`))
         : null,
-      flags.incomplete ? null : deeperPanel(result),
       detailsPanel(result),
     );
 
     if (!flags.incomplete) {
+      refreshDeepenControls(result);
       refreshNext();
       replace(actions, next, nextReason, h("span", { class: "spacer" }), button("Back", () => ctx.go("seed")));
       next.focus();
@@ -481,7 +494,7 @@ export function renderScan(ctx: Ctx): HTMLElement {
   return h("section", {},
     h("h1", {}, "Looking for funds"),
     h("p", { class: "lede" }, `lnd kept its coins on three key paths, each with a receive branch and a change branch. Every address on them is looked up on ${host}.`),
-    h("p", { class: "small muted" }, `Like any wallet, this checks addresses in order and stops after ${SCAN_TIERS[0]} unused ones in a row on each path: about ${quick.requests.toLocaleString("en-GB")} lookups, ${minutesText(quick.seconds)} on a public server. Extending to lnd's own recovery window of ${DEFAULT_WINDOW.toLocaleString("en-GB")} is about ${full.requests.toLocaleString("en-GB")} lookups and is best run against your own Esplora or mempool instance. You can stop at any time and continue later.`),
+    h("p", { class: "small muted" }, `Like any wallet, this checks addresses in order and stops a path after ${SCAN_TIERS[0]} unused ones in a row, moving the finish line ${SCAN_TIERS[0]} further out each time it finds a used one, so a busy path is followed as deep as it goes: about ${quick.requests.toLocaleString("en-GB")} lookups on an empty wallet, ${minutesText(quick.seconds)} on a public server. Afterwards, if one path looks used but you suspect coins beyond the gap, you can scan that single path deeper to lnd's full recovery window of ${DEFAULT_WINDOW.toLocaleString("en-GB")} without re-checking the others. You can stop at any time and continue later.`),
     statusLine,
     running,
     kinds0,
