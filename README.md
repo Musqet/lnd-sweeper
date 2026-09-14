@@ -91,7 +91,7 @@ Requirements: Node 24.21.0 (`.nvmrc`), pnpm 10.28.0 (`packageManager` in `packag
 ```sh
 git clone https://github.com/Musqet/lnd-sweeper.git
 cd lnd-sweeper
-git checkout v1.0.0            # the tag you want to check
+git checkout v1.2.0            # the tag you want to check
 pnpm install --frozen-lockfile
 pnpm build
 sha256sum dist/lnd-sweeper.html
