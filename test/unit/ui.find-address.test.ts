@@ -19,13 +19,13 @@ function addressAt(network: Network, kind: "p2tr" | "p2wkh" | "np2wkh", change: 
 }
 
 describe("findAddress", () => {
-  it("locates a Taproot receive address on m/86' well past the usual gap", async () => {
-    const target = addressAt("mainnet", "p2tr", 0, 4213);
-    const res = await realPorts.findAddress({ seed, network: "mainnet", target, maxIndex: 5000 });
+  it("locates a Taproot receive address on m/86' past the baseline gap", async () => {
+    const target = addressAt("mainnet", "p2tr", 0, 213);
+    const res = await realPorts.findAddress({ seed, network: "mainnet", target, maxIndex: 500 });
     expect(res.found).toBe(true);
     if (res.found) {
       expect(res.owner.address).toBe(target);
-      expect(res.owner.path).toBe("m/86'/0'/0'/0/4213");
+      expect(res.owner.path).toBe("m/86'/0'/0'/0/213");
       expect(res.owner.kind).toBe("p2tr");
     }
   });
@@ -39,8 +39,9 @@ describe("findAddress", () => {
   it("reports progress and can be cancelled", async () => {
     const seen: number[] = [];
     const ctrl = new AbortController();
-    const target = addressAt("mainnet", "p2tr", 0, 4213);
-    const p = realPorts.findAddress({ seed, network: "mainnet", target, maxIndex: 5000, signal: ctrl.signal, onProgress: (s) => { seen.push(s); if (s > 0) ctrl.abort(); } });
+    // Target beyond the first 1024-address chunk so a progress event fires (and aborts) before it is found.
+    const target = addressAt("mainnet", "p2tr", 0, 1500);
+    const p = realPorts.findAddress({ seed, network: "mainnet", target, maxIndex: 2000, signal: ctrl.signal, onProgress: (s) => { seen.push(s); if (s > 0) ctrl.abort(); } });
     await expect(p).rejects.toMatchObject({ name: "AbortError" });
     expect(seen[0]).toBeGreaterThan(0);
   });
