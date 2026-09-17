@@ -186,6 +186,8 @@ export interface ScanProgress {
   window: number;
   /** Highest index seen with any history on this branch, or -1. */
   lastUsedIndex: number;
+  /** Addresses with any history (used, whether or not still funded) seen on this branch so far. */
+  usedCount: number;
   utxosFound: number;
   satsFound: number;
 }

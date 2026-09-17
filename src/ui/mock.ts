@@ -4,6 +4,7 @@
  * A source URL containing "flaky" makes the first scan fail part way, to show recovery.
  */
 import { WORDLIST, WORD_INDEX } from "../aezeed/wordlist";
+import { rootXprv } from "../keys";
 import type {
   AddressTx,
   Branch,
@@ -20,6 +21,9 @@ import type {
 import { EXTRA_BRANCHES, WALLET_BRANCHES, branchKey } from "../types";
 import { suggestWords } from "./logic";
 import { ScanFailure, UiError, type DestinationCheck, type Ports, type ScanRequest, type ScanStatus, type TxView } from "./ports";
+
+/** Dev-only: any 24 wordlist words. The mock ignores their value and always returns the same test wallet. */
+export const SAMPLE_WORDS: readonly string[] = "abandon ability able about above absent absorb abstract absurd abuse access accident account accuse achieve acid acoustic acquire across act action actor actress actual".split(" ");
 
 const sleep = (ms: number, signal?: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
@@ -149,7 +153,8 @@ export const mockPorts: Ports = {
     const utxos: OwnedUtxo[] = [...(prev?.utxos ?? [])];
     const used: DerivedAddress[] = [...(prev?.usedAddresses ?? [])];
     const depth: Partial<Record<BranchKey, number>> = { ...prev?.depth };
-    const coinTypes: (0 | 1)[] = req.network === "mainnet" ? [0] : [0, 1];
+    const coinTypes: (0 | 1)[] = req.coinTypes ? [...req.coinTypes] : req.network === "mainnet" ? [0] : [0, 1];
+    const branchList: readonly Branch[] = req.branches ?? ALL;
     const depth1: Partial<Record<BranchKey, number>> | undefined = coinTypes.includes(1) ? { ...prev?.depthCoin1 } : undefined;
     const flaky = req.client.baseUrl.includes("flaky") && flakyFailures === 0;
     const busy = req.client.baseUrl.includes("busy") && busyFailures === 0;
@@ -163,14 +168,16 @@ export const mockPorts: Ports = {
 
     let branchesDone = 0;
     for (const coinType of coinTypes) {
-      for (const b of ALL) {
+      for (const b of branchList) {
         const key = branchKey(b);
         const table = coinType === 0 ? depth : depth1!;
-        const start = table[key] ?? 0;
+        const userStart = req.startFrom?.[key] ?? 0;
+        const start = Math.max(table[key] ?? 0, userStart);
         let last = -1;
         for (const a of used) if (sameBranch(a, b) && coinTypeOfMock(a) === coinType && a.index > last) last = a.index;
         // A resume finishes what is unfinished to the requested window; a larger window extends every branch.
         let horizon = Math.max(last + 1 + req.window, req.window);
+        if (userStart > 0) horizon = Math.max(horizon, userStart + req.window);
         if (start >= horizon) continue;
         let found = 0;
         let sats = 0;
@@ -215,12 +222,38 @@ export const mockPorts: Ports = {
           }
           next = end;
           table[key] = next;
-          req.onProgress({ coinType, branch: b, scanned: next - start, window: req.window, lastUsedIndex: last, utxosFound: found, satsFound: sats });
+          const usedCount = used.filter((a) => sameBranch(a, b) && coinTypeOfMock(a) === coinType).length;
+          req.onProgress({ coinType, branch: b, scanned: next - start, window: req.window, lastUsedIndex: last, usedCount, utxosFound: found, satsFound: sats });
         }
         branchesDone += 1;
       }
     }
     return assemble();
+  },
+
+  async findAddress(req) {
+    const target = req.target.trim();
+    const coinTypes: (0 | 1)[] = req.network === "mainnet" ? [0] : [0, 1];
+    const total = (req.maxIndex + 1) * ALL.length * coinTypes.length;
+    let scanned = 0;
+    for (const coinType of coinTypes) {
+      for (const b of ALL) {
+        for (let i = 0; i <= req.maxIndex; i++) {
+          if (req.signal?.aborted) throw new UiError("Search cancelled", "other");
+          if (fakeAddress(b, req.network, i) === target) return { found: true, owner: derived(b, req.network, i, coinType) };
+        }
+        scanned += req.maxIndex + 1;
+        req.onProgress?.(scanned, total);
+        await sleep(0);
+      }
+    }
+    return { found: false, reason: "exhausted" };
+  },
+
+  masterXprv(_seed, network) {
+    // A real Base58Check xprv from the mock's fixed entropy (see decipher), so the
+    // export is genuinely importable into another wallet during development.
+    return rootXprv(new Uint8Array(16).fill(7), network);
   },
 
   incompleteBranches(result, window) {
@@ -237,14 +270,18 @@ export const mockPorts: Ports = {
     return out;
   },
 
-  scanCost(network, window, resumeFrom) {
-    const passes = network === "mainnet" ? 1 : 2;
-    let requests = window * 7 * passes;
-    if (resumeFrom) {
-      for (const d of Object.values(resumeFrom.depth)) requests -= Math.min(d ?? 0, window);
-      for (const d of Object.values(resumeFrom.depthCoin1 ?? {})) requests -= Math.min(d ?? 0, window);
+  scanCost(network, window, resumeFrom, opts) {
+    const passes = (opts?.coinTypes ?? (network === "mainnet" ? [0] : [0, 1])).length;
+    const branches = opts?.branches ?? ALL;
+    let requests = 0;
+    for (const b of branches) {
+      const key = branchKey(b);
+      const userStart = opts?.startFrom?.[key] ?? 0;
+      const start = Math.max(resumeFrom?.depth?.[key] ?? 0, userStart);
+      const horizon = userStart > 0 ? Math.max(window, userStart + window) : window;
+      requests += Math.max(0, horizon - start) * passes;
     }
-    return { requests: Math.max(0, requests), seconds: Math.ceil(Math.max(0, requests) / 8) };
+    return { requests, seconds: Math.ceil(requests / 8) };
   },
 
   async fetchTransactions(client, addresses): Promise<TxView[]> {

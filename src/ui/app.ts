@@ -23,8 +23,10 @@ export interface Ctx {
   refresh(): void;
 }
 
-export function mount(root: HTMLElement, ports: Ports): void {
+export function mount(root: HTMLElement, ports: Ports, opts: { words?: readonly string[] } = {}): void {
   let state = freshState();
+  // Development convenience (mock only): start with the seed words filled in.
+  if (opts.words) for (let i = 0; i < state.words.length; i++) state.words[i] = opts.words[i] ?? "";
 
   const badge = h("span", { class: "badge", hidden: true });
   const footerReset = h("button", { type: "button", class: "linkish", onClick: () => ctx.startOver() }, "Start over and clear everything from memory");

@@ -605,3 +605,69 @@ describe("per-path deepen: following one used path past the 100 gap", () => {
     expect(costAfter.requests).toBe(0);
   });
 });
+
+describe("rolling deeper scan: walking a restored wallet past its recovery-window gap", () => {
+  // A restore leaves a gap the size of the recovery window, then resumes just past
+  // it, so a fixed window equal to that gap lands exactly on the boundary and misses
+  // the next island. Rolling the window out past the current depth bridges it.
+  const GAP = 10;
+  const island = { [addr(0, B86E, 3)]: [] as Utxo[], [addr(0, B86E, 3 + 1 + GAP)]: [confirmed("f0".repeat(32), 0, 50_000)] };
+
+  it("a window equal to the gap stops on the boundary and misses the island", async () => {
+    const c = fakeClient(island);
+    const base = await scan(deriver, c.client, "mainnet", { window: GAP, batchSize: 50, branches: [B86E], coinTypes: [0] });
+    expect(base.totalSats).toBe(0);
+    // horizon = lastUsed(3) + 1 + window(10) = 14, so index 14 (the island) is never checked.
+    expect(base.depth[branchKey(B86E)]).toBe(14);
+    expect(indicesScanned(c.statsCalls, 0, B86E)).not.toContain(14);
+  });
+
+  it("rolling the window out past the current depth finds the island and vein-extends on", async () => {
+    const c = fakeClient(island);
+    const base = await scan(deriver, c.client, "mainnet", { window: GAP, batchSize: 50, branches: [B86E], coinTypes: [0] });
+    const curDepth = base.depth[branchKey(B86E)]!; // 14
+    const deep = await scan(deriver, c.client, "mainnet", { window: curDepth + GAP, batchSize: 50, branches: [B86E], coinTypes: [0], resumeFrom: base });
+    expect(deep.totalSats).toBe(50_000);
+    expect(deep.utxos.map((u) => u.owner.index)).toContain(14);
+    // Having found index 14, the horizon moves another window past it, so it keeps walking.
+    expect(deep.depth[branchKey(B86E)]!).toBeGreaterThan(14 + GAP);
+  });
+});
+
+describe("startFrom: skipping known-empty low indices", () => {
+  const B84E: Branch = { purpose: 84, change: 0, kind: "p2wkh" };
+  // Coin sits at index 2600, everything below is empty (as after a restore with a 2,500 lookahead).
+  const deep = { [addr(0, B84E, 2550)]: [confirmed("ab".repeat(32), 0, 77_000)] };
+
+  it("a fresh scan from 0 with the baseline window never reaches the coin", async () => {
+    const c = fakeClient(deep);
+    const r = await scan(deriver, c.client, "mainnet", { window: 100, batchSize: 50, branches: [B84E], coinTypes: [0] });
+    expect(r.totalSats).toBe(0);
+    expect(r.depth[branchKey(B84E)]).toBe(100);
+  });
+
+  it("starting the branch at 2500 finds the coin and skips the lower indices entirely", async () => {
+    const c = fakeClient(deep);
+    const r = await scan(deriver, c.client, "mainnet", { window: 100, batchSize: 50, branches: [B84E], coinTypes: [0], startFrom: { [branchKey(B84E)]: 2500 } });
+    expect(r.totalSats).toBe(77_000);
+    expect(r.utxos.map((u) => u.owner.index)).toContain(2550);
+    // Nothing below the start index was ever looked up.
+    expect(indicesScanned(c.statsCalls, 0, B84E).every((i) => i >= 2500)).toBe(true);
+  });
+
+  it("estimateScanCost counts only the addresses from the start index", async () => {
+    const key = branchKey(B84E);
+    const full = estimateScanCost("mainnet", { window: 100, branches: [B84E], coinTypes: [0] });
+    const skipped = estimateScanCost("mainnet", { window: 100, branches: [B84E], coinTypes: [0], startFrom: { [key]: 2500 } });
+    // From 2500 the horizon is 2500 + 100 = 2600, so 100 lookups, same as a plain window from 0.
+    expect(full.requests).toBe(100);
+    expect(skipped.requests).toBe(100);
+    // But a bare window=2600 from 0 would be far more, confirming the skip really skips.
+    expect(estimateScanCost("mainnet", { window: 2600, branches: [B84E], coinTypes: [0] }).requests).toBe(2600);
+  });
+
+  it("rejects a negative start index", async () => {
+    const c = fakeClient({});
+    await expect(scan(deriver, c.client, "mainnet", { branches: [B84E], coinTypes: [0], startFrom: { [branchKey(B84E)]: -1 } })).rejects.toThrow();
+  });
+});

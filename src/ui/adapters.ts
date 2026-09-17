@@ -13,11 +13,24 @@ import {
 } from "../aezeed";
 import { validateDestination, type DestinationKind } from "../address";
 import { EsploraClient, EsploraError, RotatingChainClient, ScanError, estimateScanCost, estimateScanSeconds, fetchTransactions, incompleteBranches, isAbortError, scan } from "../chain";
-import { deriveAddress, deriveKey, masterFromEntropy } from "../keys";
+import { deriveAddress, deriveBranchAddresses, deriveKey, masterFromEntropy, rootXprv } from "../keys";
 import { SweepError, planSweep, signSweep } from "../tx";
-import type { Network } from "../types";
+import { EXTRA_BRANCHES, WALLET_BRANCHES, walletCoinTypesFor, type AddressKind, type Network } from "../types";
 import { suggestWords } from "./logic";
-import { ScanFailure, UiError, coinTypeOfPath, type Ports } from "./ports";
+import { ScanFailure, UiError, coinTypeOfPath, type FindAddressResult, type Ports } from "./ports";
+
+/** Wallet script kinds that can produce a given destination script type; other kinds lnd never pays to on its wallet branches. */
+const WALLET_KINDS_FOR_DEST: Partial<Record<DestinationKind, readonly AddressKind[]>> = {
+  p2tr: ["p2tr"],
+  p2wpkh: ["p2wkh"],
+  p2sh: ["np2wkh"],
+};
+
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
 
 const KIND_LABEL: Record<DestinationKind, string> = {
   p2pkh: "Legacy address, starts with 1 (P2PKH)",
@@ -108,6 +121,7 @@ export const realPorts: Ports = {
           ...(req.resumeFrom ? { resumeFrom: req.resumeFrom } : {}),
           ...(req.branches ? { branches: req.branches } : {}),
           ...(req.coinTypes ? { coinTypes: req.coinTypes } : {}),
+          ...(req.startFrom ? { startFrom: req.startFrom } : {}),
           ...(req.signal ? { signal: req.signal } : {}),
         },
       );
@@ -122,6 +136,46 @@ export const realPorts: Ports = {
     }
   },
 
+  async findAddress(req): Promise<FindAddressResult> {
+    const val = validateDestination(req.target, req.network);
+    if (!val.ok) return { found: false, reason: "invalid", detail: val.reason };
+    const wantKinds = WALLET_KINDS_FOR_DEST[val.kind];
+    if (!wantKinds) {
+      return { found: false, reason: "not-wallet-kind", detail: `${val.kind.toUpperCase()} is not a script type lnd's wallet derives (it uses P2SH-wrapped SegWit, native SegWit and Taproot).` };
+    }
+    const target = val.scriptPubKey;
+    const branches = [...WALLET_BRANCHES, ...EXTRA_BRANCHES].filter((b) => wantKinds.includes(b.kind));
+    const coinTypes = walletCoinTypesFor(req.network);
+    const perBranch = req.maxIndex + 1;
+    const total = perBranch * branches.length * coinTypes.length;
+    const chunk = 1024;
+    const master = masterFromEntropy(req.seed.entropy);
+    try {
+      let scanned = 0;
+      for (const coinType of coinTypes) {
+        for (const b of branches) {
+          for (let start = 0; start <= req.maxIndex; start += chunk) {
+            if (req.signal?.aborted) throw new DOMException("Search cancelled", "AbortError");
+            const count = Math.min(chunk, req.maxIndex - start + 1);
+            const addrs = deriveBranchAddresses(master, req.network, b, start, count, { coinType });
+            for (const a of addrs) if (bytesEqual(a.scriptPubKey, target)) return { found: true, owner: a };
+            scanned += count;
+            req.onProgress?.(scanned, total);
+            // Yield so the progress bar paints and the search stays cancellable.
+            await new Promise((r) => setTimeout(r, 0));
+          }
+        }
+      }
+      return { found: false, reason: "exhausted" };
+    } finally {
+      master.wipePrivateData();
+    }
+  },
+
+  masterXprv(seed, network) {
+    return rootXprv(seed.entropy, network);
+  },
+
   incompleteBranches(result, window, branches) {
     // Passing `branches` undefined falls through to the chain function's default (all wallet branches).
     return incompleteBranches(result, window, branches);
@@ -133,6 +187,7 @@ export const realPorts: Ports = {
       ...(resumeFrom ? { resumeFrom } : {}),
       ...(opts?.branches ? { branches: opts.branches } : {}),
       ...(opts?.coinTypes ? { coinTypes: opts.coinTypes } : {}),
+      ...(opts?.startFrom ? { startFrom: opts.startFrom } : {}),
     });
     return { requests, seconds: estimateScanSeconds(requests) };
   },
