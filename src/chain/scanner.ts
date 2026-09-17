@@ -92,6 +92,16 @@ export interface ScanOptions {
   extrasFromWindow?: number;
   /** Coin type passes. Default: walletCoinTypesFor(network), primary (0) first. */
   coinTypes?: readonly CoinType[];
+  /**
+   * Per-branch first index to look up, skipping everything below it. For a
+   * wallet whose low indices are known empty (already checked), this avoids
+   * re-deriving and re-querying them. The branch is then scanned with the
+   * normal gap rule from that index (horizon at least startFrom + window),
+   * so a coin at or beyond the start is still found and vein-extended past.
+   * Default 0 for every branch. Applies to a fresh scan; ignored where a
+   * resumeFrom depth is already further on.
+   */
+  startFrom?: Partial<Record<BranchKey, number>>;
   /** Called after every batch on every branch. */
   onProgress?: (progress: ScanProgress) => void;
   signal?: AbortSignal;
@@ -123,7 +133,7 @@ function branchesFor(opts: { window?: number | undefined; branches?: readonly Br
  */
 export function estimateScanCost(
   network: Network,
-  opts: Pick<ScanOptions, "window" | "batchSize" | "branches" | "skipExtras" | "extrasFromWindow" | "coinTypes" | "resumeFrom"> = {},
+  opts: Pick<ScanOptions, "window" | "batchSize" | "branches" | "skipExtras" | "extrasFromWindow" | "coinTypes" | "resumeFrom" | "startFrom"> = {},
 ): ScanCost {
   const window = opts.window ?? DEFAULT_RECOVERY_WINDOW;
   const batchSize = opts.batchSize ?? DEFAULT_BATCH_SIZE;
@@ -134,9 +144,11 @@ export function estimateScanCost(
   for (const coinType of coinTypes) {
     const depth = coinType === 0 ? opts.resumeFrom?.depth : opts.resumeFrom?.depthCoin1;
     for (const branch of branches) {
-      const start = depth?.[branchKey(branch)] ?? 0;
+      const key = branchKey(branch);
+      const userStart = validStart(opts.startFrom?.[key], key);
+      const start = Math.max(depth?.[key] ?? 0, userStart);
       const lastUsed = opts.resumeFrom ? lastUsedIndexIn(opts.resumeFrom.usedAddresses, coinType, branch) : -1;
-      const todo = Math.max(0, completionTarget(window, lastUsed) - start);
+      const todo = Math.max(0, initialHorizon(window, lastUsed, userStart) - start);
       requests += todo;
       progressEvents += Math.ceil(todo / batchSize);
     }
@@ -246,6 +258,22 @@ function completionTarget(window: number, lastUsedIndex: number): number {
 }
 
 /**
+ * Initial horizon for a branch. Normally the completion target; when the user
+ * starts the branch at a non-zero index (skipping known-empty low indices), the
+ * horizon is at least startFrom + window so a full window is scanned from there.
+ */
+function initialHorizon(window: number, lastUsedIndex: number, userStart: number): number {
+  const base = completionTarget(window, lastUsedIndex);
+  return userStart > 0 ? Math.max(base, userStart + window) : base;
+}
+
+function validStart(value: number | undefined, key: string): number {
+  if (value === undefined) return 0;
+  if (!Number.isInteger(value) || value < 0) throw new Error(`startFrom[${key}] must be a non-negative integer`);
+  return value;
+}
+
+/**
  * Branches of `result` that the recovery rule says are not finished at
  * `window` (for the UI's "Continue" button). Pass the branches the scan used.
  */
@@ -335,6 +363,7 @@ async function step(
     scanned: state.next,
     window,
     lastUsedIndex: state.lastUsed,
+    usedCount: state.used.length,
     utxosFound: state.utxos.length,
     satsFound: state.sats,
   });
@@ -416,9 +445,10 @@ export async function scan(
     const states: BranchState[] = [];
     for (const branch of branches) {
       const key = branchKey(branch);
-      const startIndex = depth[key] ?? 0;
+      const userStart = validStart(options.startFrom?.[key], key);
+      const startIndex = Math.max(depth[key] ?? 0, userStart);
       const lastUsedIndex = lastUsedIndexIn(usedByAddress.values(), coinType, branch);
-      states.push(new BranchState(coinType, branch, key, startIndex, lastUsedIndex, completionTarget(window, lastUsedIndex)));
+      states.push(new BranchState(coinType, branch, key, startIndex, lastUsedIndex, initialHorizon(window, lastUsedIndex, userStart)));
     }
     all.push(...states);
     // Round robin: one batch per unfinished branch per round.

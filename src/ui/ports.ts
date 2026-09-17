@@ -8,6 +8,7 @@
 import type {
   AddressTx,
   Branch,
+  BranchKey,
   ChainClient,
   CipherSeed,
   DerivedAddress,
@@ -88,9 +89,28 @@ export interface ScanRequest {
   branches?: readonly Branch[] | undefined;
   /** Restrict the scan to these coin type passes. Default: the network's usual passes. */
   coinTypes?: readonly (0 | 1)[] | undefined;
+  /** Per-branch first index to look up, skipping known-empty low indices. Default 0. */
+  startFrom?: Partial<Record<BranchKey, number>> | undefined;
   onProgress: (p: ScanProgress) => void;
   signal?: AbortSignal | undefined;
 }
+
+export interface FindAddressRequest {
+  seed: CipherSeed;
+  network: Network;
+  /** The address to locate. */
+  target: string;
+  /** Highest index to try on each candidate branch (0..maxIndex inclusive). */
+  maxIndex: number;
+  /** Progress: addresses derived so far, and the total that will be derived. */
+  onProgress?: ((scanned: number, total: number) => void) | undefined;
+  signal?: AbortSignal | undefined;
+}
+
+export type FindAddressResult =
+  | { found: true; owner: DerivedAddress }
+  /** `invalid`: not a valid address for the network. `not-wallet-kind`: valid, but not a script type lnd's wallet derives. `exhausted`: not found within maxIndex. */
+  | { found: false; reason: "invalid" | "not-wallet-kind" | "exhausted"; detail?: string };
 
 export interface PlanOptions {
   /** Chain tip, used as nLockTime. */
@@ -116,10 +136,23 @@ export interface Ports {
   createChainClient(sources: string | string[], network: Network, onStatus?: (s: ScanStatus) => void): ChainClient;
   /** Throws ScanFailure (with partial results) when it cannot finish. */
   scan(req: ScanRequest): Promise<ScanResult>;
+  /**
+   * Locate which wallet path derives `target`, by local derivation only (no
+   * chain lookups). Used to recover a coin on an address beyond the gap scan,
+   * when its address is known. Only branches whose script type matches the
+   * target are searched.
+   */
+  findAddress(req: FindAddressRequest): Promise<FindAddressResult>;
+  /**
+   * Root BIP32 extended private key (xprv) for importing this wallet into
+   * another tool (e.g. Sparrow, derivation m/86'/0'/0' for Taproot). Sensitive:
+   * only ever surfaced on the user's explicit request; never logged.
+   */
+  masterXprv(seed: CipherSeed, network: Network): string;
   /** Branches that have not yet reached the recovery window past their last used address. Pass `branches` to scope the check to a single path. */
   incompleteBranches(result: ScanResult, window: number, branches?: readonly Branch[]): { coinType: 0 | 1; branch: Branch }[];
   /** Lookups and rough seconds a scan to `window` needs; with `resumeFrom`, only the extra work beyond that result. `opts.branches`/`opts.coinTypes` scope it to a single path. */
-  scanCost(network: Network, window: number, resumeFrom?: ScanResult, opts?: { branches?: readonly Branch[]; coinTypes?: readonly (0 | 1)[] }): { requests: number; seconds: number };
+  scanCost(network: Network, window: number, resumeFrom?: ScanResult, opts?: { branches?: readonly Branch[]; coinTypes?: readonly (0 | 1)[]; startFrom?: Partial<Record<BranchKey, number>> }): { requests: number; seconds: number };
   /** Transactions touching these addresses, newest first, de-duplicated. */
   fetchTransactions(client: ChainClient, addresses: readonly DerivedAddress[], signal?: AbortSignal): Promise<TxView[]>;
   validateDestination(address: string, network: Network): DestinationCheck;

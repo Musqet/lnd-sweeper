@@ -2,7 +2,7 @@
  * All in-memory state for one session. Nothing is persisted anywhere.
  * `reset()` zero-fills key material and drops every reference.
  */
-import type { ChainClient, CipherSeed, Network, ScanResult, SignedSweep, SweepPlan } from "../types";
+import type { Branch, BranchKey, ChainClient, CipherSeed, Network, ScanResult, SignedSweep, SweepPlan } from "../types";
 import type { ScanStatus } from "./ports";
 
 export type StepId = "start" | "seed" | "scan" | "sweep" | "result";
@@ -38,6 +38,12 @@ export interface AppState {
   justCleared: boolean;
   /** Recovery window the current result was scanned to (per-branch depth lives in scan.depth). */
   scanWindow: number;
+  /** Branches the user chose to scan this session (null = all wallet branches). Keeps "Continue" and re-mounts from re-checking paths that were deliberately skipped. */
+  scanBranches: readonly Branch[] | null;
+  /** Coin type passes chosen this session (null = the network's default passes). */
+  scanCoinTypes: readonly (0 | 1)[] | null;
+  /** Per-branch first index chosen this session, skipping known-empty low indices (null = start at 0). */
+  scanStartFrom: Partial<Record<BranchKey, number>> | null;
   feeEstimates: Record<string, number> | null;
   /** Destination as typed, so leaving and returning to the sweep step keeps it. */
   destination: string;
@@ -66,6 +72,9 @@ export function freshState(): AppState {
     includeUnconfirmed: false,
     justCleared: false,
     scanWindow: SCAN_TIERS[0]!,
+    scanBranches: null,
+    scanCoinTypes: null,
+    scanStartFrom: null,
     feeEstimates: null,
     destination: "",
     plan: null,
@@ -87,6 +96,9 @@ export function wipe(state: AppState): void {
   state.destination = "";
   state.signed = null;
   state.scan = null;
+  state.scanBranches = null;
+  state.scanCoinTypes = null;
+  state.scanStartFrom = null;
   state.includeUnconfirmed = false;
   state.client = null;
   state.chainStatus = null;

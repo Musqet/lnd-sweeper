@@ -2,15 +2,19 @@ import "./ui/styles.css";
 import { mount } from "./ui/app";
 import type { Ports } from "./ui/ports";
 
-async function loadPorts(): Promise<Ports> {
-  // Development only: `pnpm dev` then open /?mock to drive the whole flow with no network.
-  if (import.meta.env.DEV && new URLSearchParams(location.search).has("mock")) {
-    return (await import("./ui/mock")).mockPorts;
+const useMock = import.meta.env.DEV && new URLSearchParams(location.search).has("mock");
+
+async function load(): Promise<{ ports: Ports; words?: readonly string[] }> {
+  // Development only: `pnpm dev` then open /?mock to drive the whole flow with no
+  // network, with the seed words pre-filled.
+  if (useMock) {
+    const mock = await import("./ui/mock");
+    return { ports: mock.mockPorts, words: mock.SAMPLE_WORDS };
   }
-  return (await import("./ui/adapters")).realPorts;
+  return { ports: (await import("./ui/adapters")).realPorts };
 }
 
 const root = document.getElementById("app");
 if (root) {
-  loadPorts().then((ports) => mount(root, ports));
+  load().then(({ ports, words }) => mount(root, ports, words ? { words } : {}));
 }
