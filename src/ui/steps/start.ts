@@ -111,7 +111,11 @@ export function renderStart(ctx: Ctx): HTMLElement {
     h("h1", {}, "Recover on-chain funds from a dead LND node"),
     cleared,
     h("p", { class: "lede" }, "Type the 24 seed words lnd gave you. This page finds what is left on that wallet and sends all of it, in one transaction, to an address you choose."),
-    notice("warn", h("p", {}, h("strong", {}, "Only for a node whose channels are all closed."), " If channels are still open, restore the node with lnd or use ", h("a", { href: "https://github.com/lightninglabs/chantools", rel: "noopener", target: "_blank" }, "chantools"), " instead: sweeping the wallet does not touch money inside channels.")),
+    notice(
+      "warn",
+      h("p", {}, h("strong", {}, "This only sweeps the wallet, not money in channels."), " If any channels are still open, restore the node with lnd and your channel backup, or use ", h("a", { href: "https://github.com/lightninglabs/chantools", rel: "noopener", target: "_blank" }, "chantools"), "."),
+      h("p", {}, h("strong", {}, "Force-closed channels are not found here."), " After a force close, your share lands in a special output that lnd has to move into the wallet itself. If your node closed the channel, it is time-locked first, usually for between one day and two weeks. If the node was gone before lnd moved it, the money is still in that output and this page cannot see or spend it. Use chantools: ", h("code", {}, "sweepremoteclosed"), " if the other side closed the channel, ", h("code", {}, "sweeptimelockmanual"), " if your node closed it."),
+    ),
     form,
 
     h("details", { class: "panel" },
