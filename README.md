@@ -13,6 +13,7 @@ One HTML file. Download it, check its hash, open it from disk. It derives the ad
 ## When not to use it
 
 - **You had open channels.** Channel funds are not in the wallet's normal addresses and this tool will not see them. Restore the seed into a new lnd node with your static channel backup (`channel.backup`), or use [chantools](https://github.com/lightninglabs/chantools). Sweeping the wallet first is fine, but do not assume the wallet balance is all your money.
+- **A channel was force-closed and the node died before lnd swept it.** Your share sits in an output built from channel keys, not a wallet address (and, if your node closed it, time-locked for usually one day to two weeks), so this tool cannot see or spend it. Use chantools: `sweepremoteclosed` if the peer closed the channel, `sweeptimelockmanual` if your node did.
 - **Your node still works.** Just use `lncli sendcoins`.
 - **You do not have the 24 words.** There is nothing this tool can do for you.
 - **The seed is not aezeed.** lnd's 24 words are aezeed, not BIP39. If your wallet was created by something else (Electrum, a hardware wallet, a BIP39 phrase), use that wallet's own restore.
