@@ -1,10 +1,40 @@
 name: E2E (regtest)
 
-# Drives real bitcoind + lnd on regtest. Slow, so not on every push.
+# Drives real bitcoind + lnd on regtest. Slow, so only when something it tests changes.
+# Upstream binaries are pinned, so re-running unchanged code proves nothing new.
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "17 3 * * *" # nightly, 03:17 UTC
+  pull_request:
+    paths:
+      - "src/**"
+      - "test/e2e/**"
+      - "test/fixtures/**"
+      - "scripts/e2e-*.sh"
+      - "scripts/verify-upstream-binaries.sh"
+      - "vitest.e2e.config.ts"
+      - "vite.config.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".nvmrc"
+      - ".github/workflows/e2e.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "test/e2e/**"
+      - "test/fixtures/**"
+      - "scripts/e2e-*.sh"
+      - "scripts/verify-upstream-binaries.sh"
+      - "vitest.e2e.config.ts"
+      - "vite.config.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".nvmrc"
+      - ".github/workflows/e2e.yml"
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
