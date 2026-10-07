@@ -16,9 +16,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { existsSync } from "node:fs";
 import { HDKey } from "@scure/bip32";
 import type { AddressKind, ScanResult, SignedSweep } from "../../src/types";
-import { EXTRA_BRANCHES, PURPOSE_FOR_KIND, WALLET_BRANCHES, coinTypeFor } from "../../src/types";
+import { EXTRA_BRANCHES, PURPOSE_FOR_KIND, WALLET_BRANCHES } from "../../src/types";
 import { decipherMnemonic, InvalidPassphraseError } from "../../src/aezeed";
-import { deriveBranchAddresses, masterFromEntropy } from "../../src/keys";
+import { accountNode, deriveBranchAddresses, masterFromEntropy } from "../../src/keys";
 import { DEFAULT_RATE_PER_SECOND, SCAN_TIERS, ScanError, estimateScanCost, scan } from "../../src/chain";
 import { planSweep, signSweep } from "../../src/tx";
 import { start as startShim, type Shim } from "./esplora-shim";
@@ -248,12 +248,14 @@ describe("lnd seed recovery on regtest", () => {
 
     // Branch ordering in chantools' output, cross-checked against bitcoind's own deriveaddresses.
     // bitcoind cannot derive hardened steps from a descriptor, so hand it the account-level tpub.
+    // Derive that tpub the way lnd does (btcd DeriveNonStandard at coin'/account'): plain BIP32
+    // differs for the ~1.9% of seeds with a leading-zero parent key, and lnd's seed is fresh each run.
     const tprv = await showRootKey(S.mnemonic, S.passphrase, NETWORK);
     expect(tprv.startsWith("tprv")).toBe(true);
     const root = HDKey.fromExtendedKey(tprv, { private: 0x04358394, public: 0x043587cf });
     const bd = S.bitcoind!;
     for (const kind of KINDS) {
-      const account = root.derive(`m/${PURPOSE_FOR_KIND[kind]}'/${coinTypeFor(NETWORK)}'/0'`).publicExtendedKey;
+      const account = accountNode(root, NETWORK, PURPOSE_FOR_KIND[kind]).publicExtendedKey;
       expect(account.startsWith("tpub")).toBe(true);
       for (const change of [0, 1] as const) {
         const inner = `${account}/${change}/*`;
